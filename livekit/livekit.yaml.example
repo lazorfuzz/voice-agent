@@ -1,0 +1,29 @@
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # use_external_ip MUST be true, else LiveKit advertises only its private node_ip
+  # (10.0.0.x host) and gathers NO srflx/relay candidates — remote clients then have
+  # nothing reachable to connect to. With it true, the SFU discovers its public IP via
+  # STUN AND gathers a relay candidate from turn_servers below (the deterministic path:
+  # phone-relay <-> SFU-relay, both public on the VPS).
+  use_external_ip: true
+  # NOTE: LiveKit does NOT use an external `turn_servers` block to gather its own relay
+  # candidate (verified: it never allocates on the VPS). The remote path instead works
+  # like this: the SFU advertises its public IP (<your-public-IP>, found via STUN above);
+  # the BROWSER relays through the VPS TURN (offered by token_server's iceServers); the
+  # SFU's outbound ICE check to the browser's relay hole-punches the home NAT, and the
+  # relay permits the SFU's public IP. Verified with a relay-only probe -> connectionType "turn".
+
+keys:
+  devkey: CHANGE-ME-to-a-random-secret
+
+logging:
+  level: info
+
+room:
+  # Keep these short so a disconnect tears the room down fast and a reconnect gets a
+  # clean, fresh agent dispatch instead of waiting on the old room to time out.
+  empty_timeout: 3
+  departure_timeout: 2

@@ -1,0 +1,108 @@
+{
+	# self-signed internal CA (trust its root on the iPhone, or tap through the warning)
+	local_certs
+	admin off
+}
+
+# The IP must be named here so Caddy provisions an internal cert with it as a SAN and
+# serves it by default (browsers send NO SNI for a bare IP, so a wildcard :8443 can't
+# pick a cert). run_all.sh rewrites this line automatically when the DHCP lease changes.
+<your-LAN-IP>:8443 {
+	tls internal
+
+	# LiveKit signaling WebSocket -> container (published on host :7880)
+	handle /rtc* {
+		reverse_proxy 127.0.0.1:7880
+	}
+
+	# token minting -> token server
+	handle /token* {
+		reverse_proxy 127.0.0.1:8790
+	}
+
+	handle /chat* {
+		reverse_proxy 127.0.0.1:8790
+	}
+
+	# speaker enrollment (ambient voice gate) -> token server
+	handle /enroll* {
+		reverse_proxy 127.0.0.1:8790
+	}
+
+	# Ring live-view WebRTC broker (WebSocket + ICE) -> ring_live service
+	handle /live* {
+		reverse_proxy 127.0.0.1:8791
+	}
+
+	# Tesla Fleet API command-signing public key (also served on :9000 for ngrok)
+	handle /.well-known/appspecific/* {
+		root * /Users/YOU/voice-agent/tesla_wellknown
+		file_server
+	}
+
+	# download the local CA root cert (to trust on the iPhone)
+	handle /ca.crt {
+		root * /Users/YOU/voice-agent/caddy_ca
+		file_server
+	}
+
+	# everything else -> the frontend static server
+	handle {
+		reverse_proxy 127.0.0.1:8000
+	}
+}
+
+# Plaintext routing port for ngrok to point at (ngrok terminates TLS itself).
+# Same routes as the HTTPS site, minus the CA cert (ngrok has a real cert).
+:9000 {
+	# Cookie-session gate for the PUBLIC ngrok URL only (LAN :8443 stays open, no prompt).
+	# route{} makes directives run in written order: serve the public paths, then
+	# forward_auth every remaining request to token_server's /auth/check (which validates
+	# the signed session cookie), then route the now-authenticated request.
+	route {
+		# --- public (no auth): Tesla key, the login page, the auth endpoints ---
+		handle /.well-known/appspecific/* {
+			root * /Users/YOU/voice-agent/tesla_wellknown
+			file_server
+		}
+		handle /login {
+			rewrite * /login.html
+			root * /Users/YOU/voice-agent/frontend/auth
+			file_server
+		}
+		handle /auth/* {
+			reverse_proxy 127.0.0.1:8790
+		}
+		# --- PWA install assets: public so iOS can fetch them during "Add to Home Screen"
+		#     (Safari may request the manifest/icons without the session cookie). ---
+		@pwa path /manifest.webmanifest /icon-192.png /icon-512.png /icon-maskable-512.png /apple-touch-icon.png
+		handle @pwa {
+			reverse_proxy 127.0.0.1:8000
+		}
+
+		# --- gate: 204 -> allowed; 302 /login (navigations) or 401 (xhr/ws) -> blocked ---
+		forward_auth 127.0.0.1:8790 {
+			uri /auth/check
+		}
+
+		# --- authenticated routes (cookie is present on every request incl. the WS) ---
+		handle /rtc* {
+			reverse_proxy 127.0.0.1:7880
+		}
+		handle /token* {
+			reverse_proxy 127.0.0.1:8790
+		}
+		handle /chat* {
+			reverse_proxy 127.0.0.1:8790
+		}
+		handle /enroll* {
+			reverse_proxy 127.0.0.1:8790
+		}
+		handle /live* {
+			reverse_proxy 127.0.0.1:8791
+		}
+		handle {
+			reverse_proxy 127.0.0.1:8000
+		}
+	}
+}

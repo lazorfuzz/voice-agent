@@ -1,0 +1,20 @@
+# coturn TURN server for the voice agent (remote WebRTC media relay)
+listening-port=3478
+tls-listening-port=5349
+listening-ip=0.0.0.0
+realm=example.com
+server-name=voice-agent
+fingerprint
+lt-cred-mech
+user=turnuser:CHANGE-ME-to-a-random-secret
+# advertise the public IP for relay candidates (NAT-aware);
+# router must forward these ports to <your-LAN-IP> for real remote use
+external-ip=<your-public-IP>
+min-port=49160
+max-port=49180
+no-tls
+no-dtls
+no-cli
+stale-nonce=600
+no-multicast-peers
+log-file=stdout

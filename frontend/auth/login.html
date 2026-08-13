@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#181310">
+<title>Kronik — Sign in</title>
+<style>
+  :root{
+    --ground:#181310; --panel:rgba(38,30,24,.62); --edge:rgba(240,162,76,.22);
+    --ink:#f4ead9; --muted:#a99a86; --ember-lo:#F0A24C; --ember-hi:#d9713a; --err:#e2704e;
+    --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    display:grid; place-items:center; padding:24px;
+    background-image:
+      radial-gradient(60% 45% at 78% 12%, rgba(240,162,76,.16), transparent 60%),
+      radial-gradient(55% 40% at 12% 88%, rgba(217,113,58,.14), transparent 60%);
+  }
+  .card{
+    width:min(360px,100%); background:var(--panel);
+    -webkit-backdrop-filter:blur(22px) saturate(1.3); backdrop-filter:blur(22px) saturate(1.3);
+    border:1px solid var(--edge); border-radius:20px; padding:30px 26px 26px;
+    box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .logo{
+    font-family:var(--font-mono); font-weight:600; letter-spacing:.34em;
+    text-transform:uppercase; font-size:15px;
+    background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  h1{font-size:15px; font-weight:500; margin:14px 0 2px; color:var(--ink)}
+  p.sub{margin:0 0 22px; color:var(--muted); font-size:13px}
+  label{display:block; font-family:var(--font-mono); text-transform:uppercase;
+    letter-spacing:.14em; font-size:11px; color:var(--muted); margin:0 0 8px}
+  input{
+    width:100%; padding:13px 14px; font-size:16px; color:var(--ink);
+    background:rgba(0,0,0,.28); border:1px solid var(--edge); border-radius:12px; outline:none;
+  }
+  input:focus{border-color:var(--ember-lo); box-shadow:0 0 0 3px rgba(240,162,76,.16)}
+  button{
+    width:100%; margin-top:16px; padding:13px; font-size:14px; font-weight:600; cursor:pointer;
+    font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.18em; color:#2a1c10;
+    background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+    border:0; border-radius:12px;
+  }
+  button:active{transform:translateY(1px)}
+  .err{display:none; margin:14px 0 0; color:var(--err); font-size:13px; text-align:center}
+  .err.show{display:block}
+</style>
+</head>
+<body>
+  <form class="card" method="post" action="/auth/login">
+    <div class="logo">Kronik</div>
+    <h1>Sign in</h1>
+    <p class="sub">This home console is private.</p>
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password" autocomplete="current-password"
+           autofocus required>
+    <button type="submit">Enter</button>
+    <p class="err" id="err">Wrong password — try again.</p>
+  </form>
+  <script>
+    if (new URLSearchParams(location.search).has('e')) {
+      document.getElementById('err').classList.add('show');
+      document.getElementById('pw').focus();
+    }
+  </script>
+</body>
+</html>

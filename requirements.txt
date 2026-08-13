@@ -1,0 +1,41 @@
+# Voice agent — Python deps (install into .venv; Apple Silicon macOS).
+# setup.sh does this for you:  uv pip install --python .venv/bin/python -r requirements.txt
+
+# ---- core voice pipeline ----
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-dtln                # denoiser
+livekit-plugins-turn-detector       # EnglishModel text turn detector (fallback endpointing)
+livekit-api
+python-dotenv
+numpy
+soundfile
+
+# STT — Parakeet-TDT (MLX) is the default; the others are selectable via STT_ENGINE
+parakeet-mlx
+mlx-whisper
+qwen3-asr-mlx
+
+# TTS — pocket-tts (default, ~20ms TTFB) with kokoro kept as a fallback engine
+pocket-tts
+kokoro
+
+# ambient mode voice enrollment (speaker identification)
+resemblyzer
+
+# PIN: qwen3-asr-mlx wants tokenizers>=0.23.0 but transformers (used by the
+# turn-detector's EnglishModel) requires <=0.23.0, and 0.23.0 stable was never
+# released (only 0.22.2 then 0.23.1). 0.23.1 silently breaks EnglishModel's
+# inference runner (ImportError in transformers' version check). 0.22.2 satisfies
+# transformers AND works fine with qwen3-asr at runtime. Do not let this float.
+tokenizers==0.22.2
+speechbrain==1.1.0
+torchaudio==2.11.0
+
+# ---- optional integrations (harmless to install; tools stay off until onboarded) ----
+ring-doorbell==0.9.14
+tesla-fleet-api==1.5.0
+pychromecast
+androidtvremote2
+roombapy

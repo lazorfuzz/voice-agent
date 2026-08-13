@@ -1,0 +1,14 @@
+# Install into an isolated venv on the M4 Mac. The main voice-agent environment
+# deliberately keeps PyAV 18; aiortc currently resolves PyAV 17.
+aiortc==1.15.0
+mamba-ssm-macos==1.0.2
+ring-doorbell==0.9.14
+python-dotenv
+pillow
+scipy
+
+# Mage-VL currently requires its custom Transformers code and BF16 PyTorch.
+torch>=2.9
+transformers>=5.7
+safetensors>=0.4
+huggingface-hub>=0.20

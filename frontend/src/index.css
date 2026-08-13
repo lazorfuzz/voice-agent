@@ -1,0 +1,322 @@
+/* ============================================================================
+   EMBER v2 — a warm nocturnal glass console, now with a living presence.
+   Espresso ground lit by amber lamp-glow, frosted warm glass, ember accent with
+   a jade counterpoint, monospace wordmark, film grain. The agent is embodied as
+   a breathing ember orb (Presence.jsx) instead of an oscilloscope strip.
+   Single-theme by design (a home console at night).
+   ============================================================================ */
+:root{
+  --bg:#0E0B09;
+  --ink:#F4ECE2; --muted:#A28C78; --faint:#6E5D4F;
+  --line:rgba(255,226,193,.09);
+
+  /* frosted warm glass, layered by elevation */
+  --glass:rgba(24,18,14,.52);
+  --glass-2:rgba(38,29,22,.55);
+  --glass-3:rgba(54,40,30,.68);
+  --glass-brd:rgba(255,222,185,.11);
+  --glass-hi:rgba(255,236,213,.13);
+
+  --ember:#F0A24C; --ember-lo:#FFC57E; --ember-hi:#F0864A;
+  --jade:#5CD6AC;
+  --danger:#F2705B;
+
+  --spring:cubic-bezier(.16,1,.3,1);
+  --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  --font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%; overflow-x:hidden}
+body{
+  margin:0; color:var(--ink); background:var(--bg); font-family:var(--font-sans);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+/* ambient lamp-glow field: warm light pooling in a dark room */
+body::before{
+  content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background:
+    radial-gradient(58vw 52vw at 84% -10%, rgba(240,150,72,.22), transparent 62%),
+    radial-gradient(52vw 48vw at 4% 112%, rgba(255,108,74,.13), transparent 60%),
+    radial-gradient(44vw 40vw at 108% 104%, rgba(92,214,172,.055), transparent 60%);
+}
+/* fine film grain so glass + fills never read as flat gradient */
+body::after{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.045; mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#root{display:flex; flex-direction:column; height:100dvh}
+
+button{font-family:inherit}
+select{font-family:inherit}
+:focus-visible{outline:2px solid rgba(240,162,76,.65); outline-offset:2px; border-radius:6px}
+button:focus-visible{outline-offset:1px}
+
+/* ---------- header ---------- */
+header{
+  display:flex; align-items:center; gap:12px;
+  padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background:var(--glass); border-bottom:1px solid var(--line);
+  backdrop-filter:blur(22px) saturate(1.4); -webkit-backdrop-filter:blur(22px) saturate(1.4);
+}
+.brand{display:flex; align-items:center; gap:12px; min-width:0; flex:1 1 auto}
+.logo{
+  width:40px; height:40px; border-radius:13px; flex:0 0 auto; display:grid; place-items:center;
+  font-family:var(--font-mono); font-size:18px; font-weight:700; letter-spacing:-.03em; color:#241505;
+  background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 6px 20px rgba(240,140,70,.38), inset 0 1px 0 rgba(255,255,255,.4), inset 0 -1px 2px rgba(120,50,0,.3);
+}
+.titles{display:flex; flex-direction:column; min-width:0; gap:3px}
+.titles h1{
+  font-family:var(--font-mono); font-size:14px; font-weight:600; margin:0; color:var(--ink);
+  letter-spacing:.34em; text-transform:uppercase; padding-left:.12em; white-space:nowrap;
+}
+.statusRow{
+  display:inline-flex; align-items:center; gap:7px; min-width:0; width:fit-content; max-width:100%;
+  padding:2.5px 9px 2.5px 7px; border-radius:999px;
+  background:rgba(12,9,7,.45); border:1px solid var(--line);
+}
+.dot{width:6px; height:6px; border-radius:50%; background:var(--faint); flex:0 0 auto; transition:background .3s, box-shadow .3s}
+.dot.connected{background:var(--jade); box-shadow:0 0 9px var(--jade)}
+.dot.connecting{background:var(--ember); box-shadow:0 0 8px var(--ember); animation:pulse 1s infinite}
+.dot.error{background:var(--danger); box-shadow:0 0 8px var(--danger)}
+@keyframes pulse{50%{opacity:.35}}
+.statusText{font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em; color:var(--muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+
+.actions{display:flex; align-items:center; gap:9px; flex:0 0 auto}
+button.iconBtn{
+  width:42px; height:42px; padding:0; display:grid; place-items:center; border-radius:13px; cursor:pointer;
+  color:var(--ink); background:var(--glass-2); border:1px solid var(--glass-brd);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:inset 0 1px 0 var(--glass-hi);
+  transition:background .18s, color .18s, border-color .18s, transform .16s var(--spring), box-shadow .18s;
+}
+button.iconBtn svg{width:20px; height:20px; display:block}
+button.iconBtn:hover{background:var(--glass-3); border-color:rgba(255,222,185,.2)}
+button.iconBtn:active{transform:scale(.9)}
+button.iconBtn.on{
+  color:var(--ember); background:rgba(240,162,76,.14); border-color:rgba(240,162,76,.42);
+  box-shadow:0 0 18px rgba(240,162,76,.22), inset 0 1px 0 var(--glass-hi);
+}
+button.iconBtn.danger{color:var(--danger); background:rgba(242,112,91,.16); border-color:rgba(242,112,91,.42);
+  box-shadow:0 0 16px rgba(242,112,91,.2)}
+button.connectBtn{
+  padding:0 20px; height:42px; border-radius:13px; cursor:pointer; color:#241505; border:none; flex:0 0 auto;
+  font-family:var(--font-mono); font-size:12px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  white-space:nowrap; min-width:96px;
+  background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 6px 22px rgba(240,140,70,.34), inset 0 1px 0 rgba(255,255,255,.42);
+  transition:filter .2s, transform .16s var(--spring), box-shadow .2s;
+}
+button.connectBtn:hover{filter:brightness(1.06)}
+button.connectBtn:active{transform:scale(.95)}
+button.connectBtn.connected{
+  color:var(--danger); min-width:72px; background:rgba(242,112,91,.14); border:1px solid rgba(242,112,91,.4);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  box-shadow:inset 0 1px 0 var(--glass-hi);
+}
+button.connectBtn:disabled{opacity:.55; cursor:not-allowed}
+
+/* ---------- settings bottom sheet: grouped cards ---------- */
+.sheetBackdrop{position:fixed; inset:0; z-index:40; background:rgba(8,5,3,.55);
+  backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); animation:fade .22s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{
+  position:fixed; left:0; right:0; bottom:0; z-index:50; margin:0 auto; max-width:600px;
+  background:var(--glass-2); border:1px solid var(--glass-brd); border-bottom:none;
+  backdrop-filter:blur(34px) saturate(1.5); -webkit-backdrop-filter:blur(34px) saturate(1.5);
+  border-radius:26px 26px 0 0; box-shadow:0 -30px 80px rgba(0,0,0,.6), inset 0 1px 0 var(--glass-hi);
+  padding:10px 16px calc(18px + env(safe-area-inset-bottom));
+  max-height:86vh; overflow-y:auto; display:flex; flex-direction:column; gap:12px;
+  animation:sheetUp .42s var(--spring);
+}
+@keyframes sheetUp{from{transform:translateY(101%)}to{transform:none}}
+.sheetGrab{width:40px; height:4px; border-radius:999px; background:rgba(255,222,185,.22); margin:2px auto 2px; flex:0 0 auto}
+
+/* each section becomes a soft card */
+.field, .rowField{
+  display:flex; gap:10px; padding:14px 15px; border-radius:18px;
+  background:rgba(16,12,9,.45); border:1px solid var(--line);
+}
+.field{flex-direction:column}
+.rowField{align-items:center; justify-content:space-between; gap:14px}
+.fieldTop{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.fieldLabel{font-family:var(--font-mono); font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+.fieldHint{font-size:12.5px; color:var(--muted); line-height:1.45}
+.fieldSelect{
+  background:var(--glass-3); color:var(--ink); padding:13px; border-radius:13px; font-size:15px;
+  outline:none; cursor:pointer; width:100%; border:1px solid var(--glass-brd);
+  transition:border-color .18s;
+}
+.fieldSelect:focus{border-color:rgba(240,162,76,.5)}
+.rowText{display:flex; flex-direction:column; gap:4px; min-width:0}
+
+.toggle{
+  width:50px; height:30px; flex:0 0 auto; border-radius:999px; position:relative; cursor:pointer; padding:0;
+  background:rgba(12,9,7,.6); border:1px solid var(--glass-brd); transition:background .22s, border-color .22s, box-shadow .22s;
+}
+.toggle span{position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%;
+  background:linear-gradient(180deg,#fff,#e9ddce); box-shadow:0 2px 6px rgba(0,0,0,.4);
+  transition:transform .26s var(--spring)}
+.toggle.on{background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi)); border-color:transparent;
+  box-shadow:0 0 16px rgba(240,162,76,.35)}
+.toggle.on span{transform:translateX(20px)}
+.toggle:disabled{opacity:.5; cursor:not-allowed}
+
+.linkBtn{background:transparent; border:none; color:var(--ember); font-size:13px; font-weight:700; cursor:pointer; padding:2px 4px;
+  transition:transform .16s var(--spring)}
+.linkBtn:active{transform:scale(.94)}
+.linkBtn:disabled{color:var(--muted); cursor:default}
+.linkBtn.danger{color:var(--danger)}
+
+/* persona create/edit form */
+.btnRow{display:flex; align-items:center; gap:16px; margin-top:2px}
+.personaForm{display:flex; flex-direction:column; gap:11px}
+.formInput, .formArea{
+  background:var(--glass-3); color:var(--ink); padding:12px 13px; border-radius:13px; font-size:15px;
+  outline:none; width:100%; border:1px solid var(--glass-brd); font-family:var(--font-sans);
+  transition:border-color .18s, box-shadow .18s;
+}
+.formArea{resize:vertical; line-height:1.5; min-height:104px}
+.formInput:focus, .formArea:focus{border-color:rgba(240,162,76,.5); box-shadow:0 0 0 3px rgba(240,162,76,.14)}
+.formInput::placeholder, .formArea::placeholder{color:var(--faint)}
+.formVoiceRow{display:flex; align-items:center; gap:12px}
+.formVoiceRow .fieldLabel{flex:0 0 auto}
+.formVoiceRow .fieldSelect{flex:1}
+.previewBtn{
+  flex:0 0 auto; padding:12px 14px; border-radius:12px; cursor:pointer; white-space:nowrap;
+  color:var(--ember); background:rgba(240,162,76,.14); border:1px solid rgba(240,162,76,.42);
+  font-size:13px; font-weight:700; box-shadow:inset 0 1px 0 var(--glass-hi);
+  transition:background .18s, transform .16s var(--spring);
+}
+.previewBtn:hover{background:rgba(240,162,76,.22)}
+.previewBtn:active{transform:scale(.95)}
+.previewBtn:disabled{opacity:.7; cursor:default}
+.formErr{color:var(--danger); font-size:12.5px}
+.sheetDone.alt{padding:12px 18px; margin:0}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{
+  display:inline-flex; align-items:center; gap:7px; padding:6px 9px 6px 12px; border-radius:999px;
+  background:var(--glass-3); border:1px solid var(--glass-brd); font-size:13px;
+}
+.chip button{border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:16px; line-height:1; padding:0 1px}
+.chip button:hover{color:var(--danger)}
+
+.sheetAction{
+  display:flex; align-items:center; justify-content:center; gap:10px; padding:14px; border-radius:18px; cursor:pointer;
+  color:var(--ink); background:rgba(16,12,9,.45); border:1px solid var(--line); font-size:14px; font-weight:600;
+  transition:background .18s, border-color .18s, transform .16s var(--spring);
+}
+.sheetAction:hover{background:rgba(64,48,36,.5); border-color:rgba(255,222,185,.2)}
+.sheetAction:active{transform:scale(.98)}
+.sheetAction svg{width:19px; height:19px; color:var(--ember)}
+.sheetDone{
+  padding:14px; border-radius:16px; border:none; cursor:pointer; color:#241505;
+  font-family:var(--font-mono); font-size:13px; font-weight:600; letter-spacing:.12em; text-transform:uppercase;
+  background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 6px 22px rgba(240,140,70,.3), inset 0 1px 0 rgba(255,255,255,.4);
+  transition:transform .16s var(--spring), filter .2s;
+}
+.sheetDone:hover{filter:brightness(1.05)}
+.sheetDone:active{transform:scale(.98)}
+
+/* ---------- Ring live view ---------- */
+.liveView{padding:12px 14px 0}
+.liveBar{
+  display:flex; align-items:center; justify-content:space-between; padding:10px 14px;
+  background:var(--glass-2); border:1px solid var(--glass-brd); border-bottom:none; border-radius:16px 16px 0 0;
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+}
+.liveTitle{display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-weight:600; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase}
+.liveDot{width:8px; height:8px; border-radius:50%; background:var(--faint)}
+.liveDot.on{background:var(--danger); box-shadow:0 0 10px var(--danger); animation:pulse 1.4s infinite}
+button.liveClose{border:none; background:transparent; color:var(--muted); cursor:pointer; font-size:15px; line-height:1; padding:2px 4px}
+button.liveClose:hover{color:var(--danger)}
+.liveVideo{display:block; width:100%; max-height:52vh; background:#000; object-fit:contain;
+  border-radius:0 0 16px 16px; border:1px solid var(--glass-brd); border-top:none}
+
+/* ---------- chat ---------- */
+main{flex:1; overflow-y:auto; padding:22px 14px; -webkit-overflow-scrolling:touch}
+.chat{width:100%; max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:14px}
+
+/* welcome stage: the living orb is the hero */
+.empty{display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:9vh; text-align:center; animation:rise .5s var(--spring)}
+.stage{position:relative; width:min(56vw,230px); aspect-ratio:1; margin-bottom:4px}
+.presence{display:block; width:100%; height:100%}
+.presence.stage{width:100%; height:100%}
+.emptyTitle{font-family:var(--font-mono); font-size:19px; font-weight:600; letter-spacing:.28em; text-transform:uppercase; padding-left:.14em}
+.emptyHint{font-size:14px; color:var(--muted); margin-bottom:14px; min-height:1.4em}
+.big-connect{
+  padding:15px 44px; border-radius:16px; color:#241505; border:none; cursor:pointer;
+  font-family:var(--font-mono); font-size:14px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 12px 34px rgba(240,140,70,.32), inset 0 1px 0 rgba(255,255,255,.42);
+  transition:transform .18s var(--spring), box-shadow .2s, opacity .2s;
+}
+.big-connect:hover{transform:translateY(-1px); box-shadow:0 16px 42px rgba(240,140,70,.45)}
+.big-connect:active{transform:translateY(0) scale(.97)}
+.big-connect:disabled{opacity:.55; cursor:not-allowed}
+
+/* messages: avatar + bubble, consecutive same-speaker rows tighten and drop the avatar */
+.row{display:flex; gap:10px; align-items:flex-end; animation:rise .3s var(--spring)}
+.row.you{flex-direction:row-reverse}
+.row.grouped{margin-top:-8px}
+@keyframes rise{from{opacity:0; transform:translateY(7px)}to{opacity:1; transform:none}}
+.avatar{width:30px; height:30px; border-radius:10px; flex:0 0 auto; display:grid; place-items:center;
+  font-family:var(--font-mono); font-size:12px; font-weight:700}
+.grouped .avatar{visibility:hidden; height:0}
+.you .avatar{color:var(--jade); background:rgba(92,214,172,.14); border:1px solid rgba(92,214,172,.3)}
+.grouped.you .avatar{border:none; background:transparent}
+.agent .avatar{color:#241505; background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 3px 12px rgba(240,140,70,.35)}
+.grouped.agent .avatar{box-shadow:none; background:transparent}
+.bubble{
+  width:fit-content; max-width:min(85vw,560px);
+  padding:11px 15px; border-radius:18px; line-height:1.55; font-size:15px;
+  white-space:pre-wrap; overflow-wrap:break-word;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+.you .bubble{background:rgba(92,214,172,.12); border:1px solid rgba(92,214,172,.22); color:var(--ink); border-bottom-right-radius:7px}
+.agent .bubble{background:rgba(240,162,76,.11); border:1px solid rgba(240,162,76,.2); color:var(--ink); border-bottom-left-radius:7px}
+.grouped.you .bubble{border-top-right-radius:10px}
+.grouped.agent .bubble{border-top-left-radius:10px}
+.bubble.partial::after{content:'▍'; margin-left:2px; animation:blink 1s steps(2) infinite; color:var(--ember)}
+@keyframes blink{50%{opacity:0}}
+
+/* ---------- composer: pill with embedded send + docked presence ---------- */
+.composer{
+  display:flex; gap:10px; align-items:center;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  background:var(--glass); border-top:1px solid var(--line);
+  backdrop-filter:blur(18px) saturate(1.3); -webkit-backdrop-filter:blur(18px) saturate(1.3);
+}
+.dockOrb{width:44px; height:44px; flex:0 0 auto; border-radius:50%; overflow:hidden;
+  background:rgba(12,9,7,.5); border:1px solid var(--glass-brd); animation:rise .3s var(--spring)}
+.presence.dock{width:100%; height:100%}
+.composerPill{
+  flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:6px;
+  background:var(--glass-3); border:1px solid var(--glass-brd); border-radius:999px;
+  padding:4px 4px 4px 6px; transition:border-color .18s, box-shadow .18s;
+}
+.composerPill:focus-within{border-color:rgba(240,162,76,.5); box-shadow:0 0 0 3px rgba(240,162,76,.12)}
+.composerInput{
+  flex:1 1 auto; min-width:0; padding:10px 10px; font-size:16px; /* 16px avoids iOS zoom */
+  background:transparent; color:var(--ink); border:none; outline:none;
+}
+.composerInput::placeholder{color:var(--faint)}
+.composerSend{
+  flex:0 0 auto; width:38px; height:38px; display:grid; place-items:center;
+  border:none; border-radius:50%; cursor:pointer; color:#241505;
+  background:linear-gradient(152deg,var(--ember-lo),var(--ember-hi));
+  box-shadow:0 4px 14px rgba(240,140,70,.32), inset 0 1px 0 rgba(255,255,255,.4);
+  transition:opacity .2s, filter .2s, transform .16s var(--spring);
+}
+.composerSend svg{width:18px; height:18px}
+.composerSend:hover{filter:brightness(1.06)}
+.composerSend:active{transform:scale(.9)}
+.composerSend:disabled{opacity:.35; cursor:not-allowed; box-shadow:none}
+
+/* ---------- motion respect ---------- */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{animation-duration:.001s !important; transition-duration:.001s !important}
+}

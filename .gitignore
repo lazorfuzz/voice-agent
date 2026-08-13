@@ -1,0 +1,83 @@
+# ------------------------------------------------------------------------------
+# Secrets & credentials — NEVER commit. Templates (*.example) ARE committed.
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.robinhood
+agent/.env.local
+agent/.env.robinhood
+
+# TURN relay secret + config
+coturn/.turnpass
+coturn/turnserver.conf
+
+# deployment-specific configs (contain LAN IP / dev key / paths — copy from *.example)
+livekit/livekit.yaml
+Caddyfile
+
+# certs / keys / device pairing material
+*.pem
+caddy_ca/
+tesla_keys/
+tesla_wellknown/
+tv_remote_cert.pem
+tv_remote_key.pem
+tv_device.json
+tv_pin.txt
+api_key.txt
+
+# personal voice material & downloaded model weights (voices degrade to a stock
+# TTS voice when absent; models re-download on first run). The built-in Consuela
+# persona ships as a serialized pocket-tts voice STATE (.safetensors), not audio;
+# everything else in voices/ stays private.
+agent/voices/*
+!agent/voices/consuela.safetensors
+agent/models/
+
+# user-created personas (made from the web UI)
+agent/personas_user.json
+
+# Singing feature assets pulled from OSS for now (song library may be copyrighted; melody
+# templates need review). TODO: template/clear these and add back — see follow-up note.
+songs/
+melodies/
+.sing_cache/
+
+# ------------------------------------------------------------------------------
+# Runtime / generated state
+# ------------------------------------------------------------------------------
+.gemma_lastuse
+*.log
+sessions.db
+sessions.db-*
+sessions_ws/
+camera_snaps/
+.lan_ip
+.pubip
+results/
+
+# ------------------------------------------------------------------------------
+# Python / Node / build artifacts
+# ------------------------------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+.mage-venv/
+venv/
+node_modules/
+frontend/dist/
+
+# ESP32 smartwatch firmware — kept OUT of this OSS repo for now (has WiFi creds + a JWT
+# baked into sdkconfig, and needs the ESP-IDF toolchain). Ignored so `git add .` can't
+# sweep the secrets in. Ships/documented separately if/when it's templated for release.
+watch/
+livekit/*.lan-backup
+
+# ------------------------------------------------------------------------------
+# OS cruft
+# ------------------------------------------------------------------------------
+.DS_Store
+
+# Always keep the templates even if a broader rule above would catch them
+!*.example
+!.gitignore
