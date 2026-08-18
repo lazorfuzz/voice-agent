@@ -1,0 +1,39 @@
+# Keep the build context small + secret-free. The Dockerfiles COPY only agent/, scripts/,
+# frontend/ — but the context is the whole repo, so exclude the heavy/private bits.
+.git
+.venv
+.mage-venv
+node_modules
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+
+# runtime state / logs / DBs
+*.log
+sessions.db
+sessions.db-*
+sessions_ws/
+results/
+camera_snaps/
+.sing_cache/
+
+# secrets / local config (never bake into an image)
+.env
+.env.local
+agent/.env.local
+agent/.env.robinhood
+Caddyfile
+livekit/livekit.yaml
+coturn/turnserver.conf
+*.pem
+caddy_ca/
+tesla_keys/
+tesla_wellknown/
+
+# large / out-of-scope trees
+watch/
+songs/
+melodies/
+agent/models/
+agent/voices/sources/

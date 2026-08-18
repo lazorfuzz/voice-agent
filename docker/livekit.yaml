@@ -1,0 +1,24 @@
+# LiveKit media server config for the Docker stack. The API key is supplied separately via
+# the LIVEKIT_KEYS env var in docker-compose.yml (so no secret lives in this file).
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  # A small UDP range for WebRTC media, mapped to the host in docker-compose.yml. Widen both
+  # (here and the compose port mapping) if you expect many simultaneous participants.
+  port_range_start: 50000
+  port_range_end: 50019
+  # Discover the reachable IP via STUN so remote clients get a usable ICE candidate. For a
+  # LAN-ONLY box where STUN can't see a useful address, comment this out and set
+  #   node_ip: <your-host-LAN-IP>
+  # instead. Remote access through home NAT still needs a TURN relay (see the coturn docs).
+  use_external_ip: true
+
+room:
+  # Short timeouts: a disconnect tears the room down fast so a reconnect gets a clean, fresh
+  # agent dispatch instead of waiting on the old room to expire.
+  empty_timeout: 3
+  departure_timeout: 2
+
+logging:
+  level: info

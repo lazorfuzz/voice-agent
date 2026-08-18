@@ -9,8 +9,8 @@ fail() { echo "ERROR: $1" >&2; exit 1; }
 note() { echo "==> $1"; }
 
 # ---------- 0. sanity ----------
-[ "$(uname -s)" = "Darwin" ] || fail "This stack targets macOS (Apple Silicon) — the STT/TTS models run on MLX."
-[ "$(uname -m)" = "arm64" ]  || fail "Apple Silicon required (MLX models)."
+[ "$(uname -s)" = "Darwin" ] || fail "setup.sh is the native macOS (Apple Silicon) path — its STT models run on MLX. On Linux, run the Docker stack instead: cp docker/.env.example .env && docker compose up --build  (see docker/README.md)."
+[ "$(uname -m)" = "arm64" ]  || fail "Apple Silicon required for the native path (MLX models). On Intel/Linux, use the Docker stack — see docker/README.md."
 command -v brew >/dev/null   || fail "Homebrew is required: https://brew.sh"
 
 # ---------- 1. system deps ----------

@@ -249,8 +249,15 @@ def setup(proc: JobProcess):
     # TTFT — the earlier "slower" read was an unmatched conversation, not the STT). whisper =
     # large-v3-turbo w/ initial_prompt wake-word bias; qwen = Qwen3-ASR. STT hides under the ~620ms
     # EOU wait, so engine choice is about accuracy, not speed. Wake word fixed in post for parakeet.
-    _stt_engine = os.environ.get("STT_ENGINE", "parakeet").lower()
-    if _stt_engine == "whisper":
+    # Default engine is platform-aware: Apple Silicon runs the MLX Parakeet path; anything
+    # else (Linux/Docker, CPU or CUDA) has no MLX, so default to the faster-whisper backend.
+    # STT_ENGINE always overrides.
+    _default_stt = "parakeet" if os.uname().sysname == "Darwin" else "faster-whisper"
+    _stt_engine = os.environ.get("STT_ENGINE", _default_stt).lower()
+    if _stt_engine in ("faster-whisper", "faster_whisper", "fasterwhisper", "fw"):
+        from local_stt import FasterWhisperSTT
+        proc.userdata["stt"] = FasterWhisperSTT()
+    elif _stt_engine == "whisper":
         proc.userdata["stt"] = LocalWhisperSTT(model=WHISPER_REPO)
         try:
             import mlx_whisper

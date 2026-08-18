@@ -1,0 +1,37 @@
+# Linux/Docker Python deps — the same stack as ../requirements.txt MINUS the Apple-only MLX
+# packages (parakeet-mlx, mlx-whisper, qwen3-asr-mlx), PLUS faster-whisper (the CPU/CUDA STT
+# backend). torch + torchaudio are installed separately in the Dockerfile from the PyTorch
+# CPU/CUDA index (NOT pinned here) so the correct wheel is used for the build target.
+
+# ---- core voice pipeline ----
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-dtln                # denoiser
+livekit-plugins-turn-detector       # EnglishModel text turn detector (fallback endpointing)
+livekit-api
+python-dotenv
+numpy
+soundfile
+
+# STT — faster-whisper (CTranslate2) on CPU or NVIDIA CUDA. Replaces the MLX engines.
+faster-whisper
+
+# TTS — pocket-tts (pure torch, CPU) with kokoro kept as a fallback engine
+pocket-tts
+kokoro
+
+# ambient mode voice enrollment (speaker identification)
+resemblyzer
+
+# PIN (see ../requirements.txt for the full rationale): keep tokenizers at 0.22.2 so the
+# turn-detector's EnglishModel + qwen tokenizers stay compatible. speechbrain pinned to match.
+tokenizers==0.22.2
+speechbrain==1.1.0
+
+# ---- optional integrations (harmless to install; tools stay off until onboarded) ----
+ring-doorbell==0.9.14
+tesla-fleet-api==1.5.0
+pychromecast
+androidtvremote2
+roombapy
