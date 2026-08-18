@@ -35,13 +35,36 @@ if [ "$LAN_IP" != "$LAST_IP" ]; then
   echo "$LAN_IP" > "$P/.lan_ip"
 fi
 
+# LiveKit binds EVERY address in bind_addresses (and advertises every rtc.ips.includes) or
+# it refuses to start — so a tunnel/VPN IP that isn't up yet after a reboot (e.g. WireGuard
+# for remote access) would wedge the WHOLE media server, even for localhost. Generate a
+# runtime config that keeps only currently-present addresses (loopback always kept) and
+# start LiveKit from THAT. If the effective set changes between runs (the tunnel came back),
+# restart LiveKit so remote self-heals — same idea as the LAN-IP heal above.
+LK_SRC="$P/livekit/livekit.yaml"; LK_RUN="$P/livekit/.livekit.runtime.yaml"; LK_CHANGED=0
+if [ -f "$LK_SRC" ]; then
+  "$PY" "$P/scripts/livekit_runtime_config.py" "$LK_SRC" "$LK_RUN.new" 2>/dev/null || cp "$LK_SRC" "$LK_RUN.new"
+  cmp -s "$LK_RUN.new" "$LK_RUN" 2>/dev/null || LK_CHANGED=1
+  mv "$LK_RUN.new" "$LK_RUN"
+else
+  LK_RUN="$LK_SRC"   # no local config (shouldn't happen after setup.sh) — fall back
+fi
+
 echo "[1/7] LiveKit server..."
+if [ "$LK_CHANGED" = "1" ] && pgrep -f "livekit-server" >/dev/null; then
+  echo "  bind addresses changed (interface up/down) — restarting LiveKit to apply"
+  pkill -f "livekit-server" 2>/dev/null; container rm -f livekit >/dev/null 2>&1 || true; sleep 2
+fi
 if curl -s --max-time 2 -o /dev/null http://127.0.0.1:7880; then
   echo "  already up"
 elif command -v livekit-server >/dev/null 2>&1; then
   # native binary (brew install livekit) — the simple path, no container runtime needed
-  "$PY" "$D" "$P/livekit.log" "$(command -v livekit-server)" --config "$P/livekit/livekit.yaml"
+  "$PY" "$D" "$P/livekit.log" "$(command -v livekit-server)" --config "$LK_RUN"
   sleep 2
+  # Verify it actually bound — a bad config or an in-use port exits it silently (daemon.py
+  # does not supervise). Surface it instead of limping on with a dead media server.
+  curl -s --max-time 2 -o /dev/null http://127.0.0.1:7880 \
+    || echo "  ERROR: LiveKit did not come up — see livekit.log (tail -5 livekit.log)" >&2
 elif command -v container >/dev/null 2>&1; then
   container system start --enable-kernel-install >/dev/null 2>&1 || true
   if ! container ls 2>/dev/null | grep -q '\blivekit\b'; then
@@ -49,7 +72,7 @@ elif command -v container >/dev/null 2>&1; then
     container run -d --name livekit \
       --mount type=bind,source="$P/livekit",target=/config \
       -p 7880:7880 -p 7881:7881 -p 7882:7882/udp \
-      livekit/livekit-server:latest --config /config/livekit.yaml >/dev/null
+      livekit/livekit-server:latest --config "/config/$(basename "$LK_RUN")" >/dev/null
     sleep 4
   fi
 else

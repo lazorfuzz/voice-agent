@@ -81,3 +81,7 @@ livekit/*.lan-backup
 # Always keep the templates even if a broader rule above would catch them
 !*.example
 !.gitignore
+
+# generated at runtime by run_all.sh (bind-address healing)
+livekit/.livekit.runtime.yaml
+livekit/.livekit.runtime.yaml.new
