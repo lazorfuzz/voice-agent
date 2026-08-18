@@ -7,7 +7,9 @@ import types
 from livekit.agents import stt, utils
 from livekit import rtc
 import numpy as np
-import mlx_whisper
+# NOTE: mlx_whisper / parakeet_mlx are imported LAZILY (inside the classes/methods that use
+# them), NOT at module top — so this module imports cleanly on Linux/Docker where MLX is
+# absent and the faster-whisper backend is used instead.
 
 import speaker_id  # cheap import (encoder is lazy); source of truth for the gate threshold
 import config      # assistant name (for the Whisper wake-word bias prompt)
@@ -143,6 +145,7 @@ class LocalWhisperSTT(stt.STT):
             except Exception:
                 pass  # verification failure must not block transcription
 
+        import mlx_whisper  # lazy: Apple-Silicon only; Linux uses FasterWhisperSTT instead
         result = mlx_whisper.transcribe(
             data,
             path_or_hf_repo=self._model,
@@ -167,6 +170,89 @@ class LocalWhisperSTT(stt.STT):
         if _looks_hallucinated(text):
             return self._empty(language)
 
+        return stt.SpeechEvent(
+            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+            alternatives=[stt.SpeechData(text=text, language=language or "en")],
+        )
+
+
+def _autodetect_device() -> str:
+    """cuda if a GPU is visible, else cpu — used to pick faster-whisper defaults."""
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        return "cpu"
+
+
+class FasterWhisperSTT(LocalWhisperSTT):
+    """Non-MLX Whisper via faster-whisper (CTranslate2) — the STT backend for Linux/Docker,
+    on CPU or NVIDIA CUDA. Reuses everything from LocalWhisperSTT (energy gate, ambient
+    speaker gate, wake-word fix, hallucination filter, per-session persona prompt); only the
+    transcription engine differs. Config via env:
+        FASTER_WHISPER_MODEL   (default: large-v3 on cuda, base.en on cpu)
+        FASTER_WHISPER_DEVICE  (default: auto — cuda if available else cpu)
+        FASTER_WHISPER_COMPUTE (default: float16 on cuda, int8 on cpu)
+    """
+
+    def __init__(self, *, model: str = None, device: str = None,
+                 compute_type: str = None, persona_name: str = None):
+        # Skip LocalWhisperSTT.__init__ (it defaults to an MLX model path); init the STT base
+        # directly, then set the same instance attributes it exposes.
+        stt.STT.__init__(self, capabilities=stt.STTCapabilities(
+            streaming=False, interim_results=False))
+        self.persona_name = persona_name or config.assistant_name()
+        self._spk_sigs = None
+        self._spk_threshold = speaker_id.DEFAULT_THRESHOLD
+
+        from faster_whisper import WhisperModel
+        dev = (device or os.environ.get("FASTER_WHISPER_DEVICE", "").strip()
+               or _autodetect_device())
+        comp = (compute_type or os.environ.get("FASTER_WHISPER_COMPUTE", "").strip()
+                or ("float16" if dev == "cuda" else "int8"))
+        name = (model or os.environ.get("FASTER_WHISPER_MODEL", "").strip()
+                or ("large-v3" if dev == "cuda" else "base.en"))
+        self._model = name
+        self._fw = WhisperModel(name, device=dev, compute_type=comp)
+        _stt_log.info("faster-whisper ready: model=%s device=%s compute=%s", name, dev, comp)
+
+    async def _recognize_impl(self, buffer, *, language=None, conn_options=None):
+        data = _prep_audio(buffer)          # mono/16k downmix + energy gate (returns None if quiet)
+        if data is None:
+            return self._empty(language)
+
+        # ambient speaker gate: drop non-enrolled voices BEFORE transcription (same as MLX path)
+        if self._spk_sigs:
+            try:
+                name, sim = await asyncio.to_thread(
+                    speaker_id.verify_and_adapt, data, self._spk_sigs, self._spk_threshold)
+                if name is None:
+                    _stt_log.info("STT-DROP speaker not enrolled (sim=%.2f)", sim)
+                    return self._empty(language)
+                _stt_log.info("STT-PASS speaker=%s (sim=%.2f)", name, sim)
+            except Exception:
+                pass
+
+        # faster-whisper is blocking (CPU or CUDA) and, unlike MLX, has no event-loop-thread
+        # constraint — run it in a worker thread so the audio loop stays responsive.
+        def _run():
+            segments, _info = self._fw.transcribe(
+                data,
+                language="en",
+                temperature=0.0,
+                initial_prompt=f"The user is talking to a voice assistant named {self.persona_name}.",
+                condition_on_previous_text=True,
+                no_speech_threshold=0.6,
+                log_prob_threshold=-1.0,
+                compression_ratio_threshold=2.4,
+            )
+            return "".join(s.text for s in segments).strip()
+
+        text = await asyncio.to_thread(_run)
+        if self.persona_name.lower() == "kronik":
+            text = _fix_wake_word(text)
+        if _looks_hallucinated(text):
+            return self._empty(language)
         return stt.SpeechEvent(
             type=stt.SpeechEventType.FINAL_TRANSCRIPT,
             alternatives=[stt.SpeechData(text=text, language=language or "en")],

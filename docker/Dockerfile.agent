@@ -1,0 +1,39 @@
+# CPU image for the voice-agent worker + token server (Linux/Docker — no MLX).
+# Build from the REPO ROOT:  docker build -f docker/Dockerfile.agent -t kronik-agent .
+# (compose does this for you). The same image runs both the agent worker and the token
+# server — only the command differs (see docker-compose.yml).
+FROM python:3.12-slim
+
+# ffmpeg (audio decode), libsndfile1 (soundfile), libgomp1 (ctranslate2/faster-whisper),
+# curl (health checks).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg libsndfile1 libgomp1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install the CPU build of torch/torchaudio FIRST, from the PyTorch CPU index, so nothing
+# downstream pulls the multi-GB default CUDA wheel.
+RUN pip install --no-cache-dir torch torchaudio \
+        --index-url https://download.pytorch.org/whl/cpu
+
+COPY docker/requirements-linux.txt .
+# webrtcvad (pulled in by resemblyzer for ambient-mode speaker enrollment) ships no arm64
+# wheel and compiles a C extension from source, so add build tools just for the install,
+# then purge them to keep the image lean.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && pip install --no-cache-dir -r requirements-linux.txt \
+    && apt-get purge -y build-essential && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY agent/ ./agent/
+COPY scripts/ ./scripts/
+
+# HF_HOME points at a mounted volume so STT/TTS weights download once and persist.
+ENV PYTHONUNBUFFERED=1 \
+    HF_HOME=/models \
+    STT_ENGINE=faster-whisper
+
+WORKDIR /app/agent
+# Default command: the LiveKit agent worker. The token service overrides this in compose.
+CMD ["python", "agent.py", "dev"]

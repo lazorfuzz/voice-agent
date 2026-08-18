@@ -1,0 +1,40 @@
+# NVIDIA CUDA image for the voice-agent worker (low-latency STT on a GPU box).
+# Build from the REPO ROOT:  docker build -f docker/Dockerfile.agent.cuda -t kronik-agent-cuda .
+# Used via the CUDA compose override (see docker-compose.cuda.yml); needs the host to have an
+# NVIDIA GPU + the nvidia-container-toolkit. The cudnn runtime base supplies the cuBLAS/cuDNN
+# libraries faster-whisper (CTranslate2) needs on GPU.
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu24.04
+
+# Ubuntu 24.04 ships Python 3.12. Add the audio libs + pip.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-venv \
+        ffmpeg libsndfile1 curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# CUDA build of torch/torchaudio from the PyTorch cu124 index (matches the 12.4 base).
+RUN pip install --no-cache-dir --break-system-packages torch torchaudio \
+        --index-url https://download.pytorch.org/whl/cu124
+
+COPY docker/requirements-linux.txt .
+# webrtcvad (via resemblyzer, ambient-mode speaker enrollment) has no prebuilt wheel and
+# compiles from source — add build tools for the install, then purge to keep the image lean.
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential python3-dev \
+    && pip install --no-cache-dir --break-system-packages -r requirements-linux.txt \
+    && apt-get purge -y build-essential python3-dev && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY agent/ ./agent/
+COPY scripts/ ./scripts/
+
+# On CUDA, default to a bigger/faster-on-GPU model at float16.
+ENV PYTHONUNBUFFERED=1 \
+    HF_HOME=/models \
+    STT_ENGINE=faster-whisper \
+    FASTER_WHISPER_DEVICE=cuda \
+    FASTER_WHISPER_COMPUTE=float16 \
+    FASTER_WHISPER_MODEL=large-v3
+
+WORKDIR /app/agent
+CMD ["python3", "agent.py", "dev"]

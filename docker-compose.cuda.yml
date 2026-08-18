@@ -1,0 +1,20 @@
+# CUDA override — run the agent worker's STT on an NVIDIA GPU (~1s latency like the Mac).
+# Needs an NVIDIA GPU on the host + the nvidia-container-toolkit installed.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build
+#
+# Only the `agent` service changes; livekit/token/web stay as in the base file.
+services:
+  agent:
+    build:
+      dockerfile: docker/Dockerfile.agent.cuda
+    image: kronik-agent-cuda
+    environment:
+      FASTER_WHISPER_DEVICE: cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

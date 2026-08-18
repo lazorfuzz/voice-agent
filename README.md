@@ -1,8 +1,12 @@
 # Local Voice Agent
 
-A real-time voice assistant for macOS on Apple Silicon. You talk to it in a browser. It
-hears you, it thinks, and it replies in about one second. Every model runs on-device. No
-audio leaves your Mac unless you turn on remote access.
+A real-time, self-hosted voice assistant. You talk to it in a browser. It hears you, it
+thinks, and it replies in about one second. Every model runs on your own hardware — no audio
+leaves the machine unless you turn on remote access.
+
+Runs two ways: **natively on Apple Silicon** (a one-line setup script) and **on Linux via
+Docker** (CPU on any box, or ~1s latency on an NVIDIA GPU). The only platform-specific piece
+is speech-to-text — everything else is identical.
 
 - **Latency about 1 second.** Speech end to first audio is about one second. All stages stream.
 - **Barge-in.** Talk over the assistant. It stops and it listens.
@@ -18,23 +22,32 @@ audio leaves your Mac unless you turn on remote access.
 ```
  Browser (web UI, LiveKit JS)
     │ HTTPS: page / token / signaling
-    ├── This Mac : http://127.0.0.1:8000
-    ├── LAN      : https://<LAN-IP>:8443     (Caddy, self-signed)
-    └── Anywhere : https://your.ngrok.app    (optional; password-gated)
+    ├── This host : http://127.0.0.1:8000   (macOS)  ·  http://localhost:8080 (Docker)
+    ├── LAN       : https://<LAN-IP>:8443    (Caddy, self-signed)
+    └── Anywhere  : https://your.ngrok.app   (optional; password-gated)
                       │
      Caddy ── / → frontend   ── /token → token server (:8790)   ── /rtc → LiveKit
                       │
-     LiveKit server (native binary)  ←→  coturn TURN (optional, for remote voice)
+     LiveKit server (native binary or container)  ←→  coturn TURN (optional, remote voice)
                       │
      Python agent worker (LiveKit Agents)
        ├─ VAD  : silero + DTLN denoiser
-       ├─ STT  : Parakeet-TDT 0.6B (MLX) with hotword biasing   [whisper/qwen3-asr selectable]
+       ├─ STT  : Apple Silicon → Parakeet-TDT 0.6B (MLX), hotword biasing [whisper/qwen3-asr selectable]
+       │         Linux → faster-whisper (CTranslate2), CPU or NVIDIA CUDA
        ├─ LLM  : any OpenAI-compatible endpoint (tool calling required)
        ├─ TTS  : pocket-tts (~20ms to first audio; stock voices or clone from a wav)
        └─ Tools: per-integration, only what you onboard
 ```
 
+The diagram shows the native macOS topology. The Docker stack is equivalent, with Caddy and
+the services running as containers behind `http://localhost:8080` (see the Linux quickstart).
+
 ## Quickstart
+
+Two supported platforms. **macOS (Apple Silicon)** runs natively; **Linux** runs in Docker,
+on CPU or an NVIDIA GPU. Both open the same web UI and share the same configuration.
+
+### macOS (Apple Silicon)
 
 **You need:** an Apple Silicon Mac, macOS 15 or later, [Homebrew](https://brew.sh), and
 about 10 GB of disk (the speech models and the local LLM).
@@ -53,7 +66,7 @@ speech models. If you agree, it also installs [Ollama](https://ollama.com) with
 `qwen3.5:9b-mlx`, so you do not configure an LLM yourself. It never overwrites existing config.
 
 `run_all.sh` is idempotent. Run it again at any time. It starts only the parts that are
-down. It self-heals when your Mac's DHCP address changes.
+down, and self-heals when your DHCP address changes.
 
 To reach the assistant from another LAN device, open `https://<LAN-IP>:8443`. Trust the
 certificate at `/ca.crt` first. `run_all.sh` prints the address.
@@ -64,50 +77,86 @@ If a component fails, run the health check:
 bash scripts/doctor.sh    # checks each component and prints a fix hint
 ```
 
-<details>
-<summary><b>Use your own LLM instead of Ollama</b></summary>
+### Linux (Docker — CPU or NVIDIA CUDA)
 
-The agent works with any OpenAI-compatible endpoint that supports tool calling — `mlx_lm
-server`, LM Studio, or a remote API. Point `agent/.env.local` at it:
+The native `setup.sh` path is Apple-only because its STT runs on MLX. On Linux, a Docker
+stack swaps that one piece — speech-to-text — for
+[faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) and runs everything
+else unchanged. **You need:** Docker + the Compose plugin, and an OpenAI-compatible LLM
+endpoint (the LLM is not bundled — see *Bring your own LLM* below).
+
+**CPU — runs on any Linux box:**
+
+```bash
+git clone <this-repo> voice-agent && cd voice-agent
+cp docker/.env.example .env      # then set OPENAI_BASE_URL to your LLM
+docker compose up --build        # open http://localhost:8080
+```
+
+**NVIDIA GPU (CUDA — ~1s latency):** needs an NVIDIA GPU and the
+[nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build
+```
+
+Open **http://localhost:8080**, pick a mic, tap Connect, talk. (Mic access works on
+`localhost`; for LAN/remote the browser requires HTTPS — see the Docker guide.) The CPU image
+defaults to the `base.en` STT model; the CUDA image defaults to `large-v3` at float16. Full
+guide (HTTPS/LAN, model overrides, integrations, troubleshooting):
+**[docker/README.md](docker/README.md)**.
+
+> Docker on a **Mac** can't accelerate the models (no Metal passthrough into containers) — on
+> a Mac, use the native `setup.sh` path above.
+
+### Bring your own LLM
+
+The agent works with any OpenAI-compatible endpoint that supports tool calling — Ollama,
+[vLLM](https://github.com/vllm-project/vllm), LM Studio, `mlx_lm server`, or a remote API.
+Point config at it: `agent/.env.local` for the native path, or `.env` for Docker.
 
 ```
-OPENAI_BASE_URL=http://127.0.0.1:8080/v1
+OPENAI_BASE_URL=http://127.0.0.1:11434/v1   # your endpoint (Docker: use host.docker.internal)
 OPENAI_API_KEY=anything-nonempty
-LLM_MODEL=your-model-id
+LLM_MODEL=your-model-id                      # a tool-calling model your endpoint serves
 ```
 
-To serve a raw MLX model (for example, your own finetune), you need no extra software. The
-venv already includes `mlx_lm`:
+<details>
+<summary><b>Serving a raw MLX model (macOS)</b></summary>
+
+On Apple Silicon you can serve a raw MLX model — for example your own finetune — with no
+extra software; the venv already includes `mlx_lm`:
 
 ```bash
 bash scripts/serve_mlx.sh mlx-community/Qwen3-8B-4bit   # or a local model path
 ```
 
-The reference deployment uses this same pattern. It runs
+The reference deployment uses this pattern. It runs
 [**0G-AI/0GM-1.0-35B-A3B-0427**](https://huggingface.co/0G-AI/0GM-1.0-35B-A3B-0427), an
 apache-2.0 MoE finetune of Qwen3.6-35B-A3B (~3B active params) with strong tool calling.
-The agent prompts and the latency tuning target that model. The 4-bit conversion is about
-18 GB on disk. Convert once, then serve:
+The agent prompts and latency tuning target that model. The 4-bit conversion is about 18 GB
+on disk. Convert once, then serve:
 
 ```bash
 .venv/bin/python -m mlx_lm convert --hf-path 0G-AI/0GM-1.0-35B-A3B-0427 -q --mlx-path ~/models/0gm-4bit
 bash scripts/serve_mlx.sh ~/models/0gm-4bit
 ```
 
-Tool calling works with Qwen-family models. To override the model for voice only, set
-`VOICE_LLM_MODEL` and `VOICE_LLM_URL`. If you expose the server past localhost, put a
-bearer-auth proxy in front of it.
+To override the model for voice only, set `VOICE_LLM_MODEL` and `VOICE_LLM_URL`. If you expose
+the server past localhost, put a bearer-auth proxy in front of it.
 </details>
 
 ## Configuration
 
-All settings are in **`agent/.env.local`**. Copy it from
-[`agent/.env.local.example`](agent/.env.local.example), which documents every key. Main keys:
+Settings live in **`agent/.env.local`** for the native macOS path (copy it from
+[`agent/.env.local.example`](agent/.env.local.example)), or in **`.env`** for the Docker path
+(copy it from [`docker/.env.example`](docker/.env.example)). Both document every key. Main keys:
 
 | Key | Purpose |
 |---|---|
 | `OPENAI_BASE_URL` / `LLM_MODEL` | your LLM endpoint and model |
-| `STT_ENGINE` | `parakeet` (default) / `whisper` / `qwen3-asr` |
+| `STT_ENGINE` | macOS: `parakeet` (default) / `whisper` / `qwen3-asr`; Linux: `faster-whisper` |
+| `FASTER_WHISPER_MODEL` / `_DEVICE` / `_COMPUTE` | Linux STT model + CPU/CUDA selection |
 | `POCKET_VOICE` | a TTS voice name, or a path to a wav to clone |
 | `ASSISTANT_NAME` / `WAKE_WORD` | rename the assistant |
 | `<NAME>_ENABLED` | one flag per integration; all off by default |
@@ -125,15 +174,19 @@ its own `_ENABLED` flag:
 ```
 
 See **[ONBOARDING.md](ONBOARDING.md)** for the needs of each integration (accounts, LAN
-discovery, OAuth flows) and how to disable one. Restart the agent worker afterward:
+discovery, OAuth flows) and how to disable one. On Docker, add the same vars to `.env`. Restart
+the agent worker afterward:
 
 ```bash
-pkill -f "agent.py dev"; bash run_all.sh
+pkill -f "agent.py dev"; bash run_all.sh    # native
+docker compose restart agent                # Docker
 ```
 
 ## Remote access (optional)
 
-The default setup serves your Mac and your LAN. To allow access from anywhere:
+The default setup serves the host machine and its LAN. To allow access from anywhere (this
+section describes the native path; for Docker, front the `web` service with TLS as covered in
+[docker/README.md](docker/README.md)):
 
 1. **ngrok.** Run `brew install ngrok`. Add your authtoken. Set `NGROK_DOMAIN` in
    `agent/.env.local` (blank gives a random URL). `run_all.sh` starts the tunnel.
@@ -146,14 +199,27 @@ The default setup serves your Mac and your LAN. To allow access from anywhere:
 
 ## Manage the stack
 
+Native (macOS):
+
 ```bash
 tail -f agent.log                    # the agent worker (includes latency lines)
 tail -f latency.log                  # per-turn pipeline timings
 pkill -f "agent.py dev"; bash run_all.sh    # restart the agent only
-pkill -f livekit-server              # stop the media server (container stop livekit if containerized)
+pkill -f livekit-server              # stop the media server
+```
+
+Docker (Linux):
+
+```bash
+docker compose logs -f agent         # the agent worker
+docker compose restart agent         # restart the agent only
+docker compose down                  # stop the whole stack
 ```
 
 ## Advanced and experimental
+
+These features are developed on the native macOS path; some (Gemma Ears) depend on MLX and are
+Apple-Silicon-only.
 
 - **SoulX-Duplug turn detector** (`TURN_DETECTOR=soulx`). A trained full-duplex end-of-turn
   model. It cuts response latency against plain VAD endpointing and removes mid-sentence
@@ -172,16 +238,17 @@ pkill -f livekit-server              # stop the media server (container stop liv
 
 ## Troubleshooting
 
-Run `bash scripts/doctor.sh` first. It checks every component and prints a fix for each
-problem. Common cases:
+On the native path, run `bash scripts/doctor.sh` first — it checks every component and prints a
+fix for each. On Docker, check `docker compose logs -f agent`. Common cases:
 
 | Symptom | Fix |
 |---|---|
-| "no LLM" warning | run `bash setup.sh` (installs Ollama), or check `OPENAI_BASE_URL` |
-| microphone connects, no replies | run `tail -f agent.log` — usually the LLM endpoint or model id |
-| LAN page does not load | trust the certificate: open `https://<LAN-IP>:8443/ca.crt` |
+| "no LLM" warning | native: `bash setup.sh` (installs Ollama); Docker: set `OPENAI_BASE_URL` in `.env` (use `host.docker.internal`, not `127.0.0.1`) |
+| microphone connects, no replies | check the agent log — usually the LLM endpoint or model id |
+| LAN page does not load | native: trust the cert at `https://<LAN-IP>:8443/ca.crt`; Docker: mic needs HTTPS off `localhost` (see docker/README.md) |
 | remote voice connects but stays silent | TURN is not reachable — see Remote access |
-| first reply is slow after boot | models warm on the first call; the setup.sh prefetch avoids most delay |
+| no audio / ICE fails (Docker) | keep the `50000-50019/udp` media range published and open in the firewall |
+| first reply is slow after boot | models warm on the first call; the native `setup.sh` prefetch avoids most delay |
 | assistant echoes itself | use headphones, or rely on the built-in echo gate (on by default) |
 
 ## License

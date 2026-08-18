@@ -1,0 +1,76 @@
+# Kronik voice agent — Linux/Docker stack (CPU default).
+#
+#   cp docker/.env.example .env      # then set OPENAI_BASE_URL to your LLM
+#   docker compose up --build        # open http://localhost:8080
+#
+# The LLM (the "brain") is NOT part of this stack — point OPENAI_BASE_URL at any
+# OpenAI-compatible endpoint with tool calling (vLLM, ollama, a cloud API). For a GPU box,
+# add the CUDA override:  docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build
+name: kronik
+
+services:
+  # WebRTC media server. Media (UDP) flows directly to this container's mapped ports; the
+  # signaling WebSocket is proxied through the `web` service (Caddy) so it shares the SPA origin.
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    environment:
+      LIVEKIT_KEYS: "devkey: ${LIVEKIT_API_SECRET:-dev-only-secret-change-me-0123456789}"
+    volumes:
+      - ./docker/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "7880:7880"                       # signaling (also reached via web:/rtc)
+      - "7881:7881"                       # ICE/TCP fallback
+      - "50000-50019:50000-50019/udp"     # WebRTC media (must match rtc.port_range in livekit.yaml)
+    restart: unless-stopped
+
+  # JWT token minter + chat backend. Same image as the agent, different command.
+  token:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    image: kronik-agent
+    command: python token_server.py
+    env_file: [.env]
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-dev-only-secret-change-me-0123456789}
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-ws://localhost:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets chat reach an LLM on the host (Linux)
+    depends_on: [livekit]
+    restart: unless-stopped
+
+  # The LiveKit agent worker: VAD + STT (faster-whisper) + TTS (pocket-tts) + tools.
+  agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    image: kronik-agent
+    command: python agent.py dev
+    env_file: [.env]
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-dev-only-secret-change-me-0123456789}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the agent reach an LLM on the host (Linux)
+    volumes:
+      - models:/models                        # STT/TTS weights download once, persist here
+    depends_on: [livekit]
+    restart: unless-stopped
+
+  # Web UI (built static bundle) + Caddy reverse-proxy for /token, /chat, /rtc.
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    image: kronik-web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on: [token, livekit]
+    restart: unless-stopped
+
+volumes:
+  models:
