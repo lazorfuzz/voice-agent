@@ -1,0 +1,34 @@
+{
+	admin off
+	auto_https off
+}
+
+# Plaintext HTTP on :8080. This is a SECURE CONTEXT on http://localhost, so the mic works
+# when you open the app from the same machine. For LAN / remote access the browser requires
+# HTTPS before it will grant mic access — front this with your own TLS (a reverse proxy, or
+# `ngrok http 8080`), or switch this block to `tls internal` with your host/IP named. See
+# docker/README.md.
+:8080 {
+	# --- API + signaling, proxied to the backend services (same origin as the SPA) ---
+	# LiveKit signaling WebSocket (the client SDK appends /rtc to LIVEKIT_PUBLIC_URL).
+	handle /rtc* {
+		reverse_proxy livekit:7880
+	}
+	# token minting + chat + speaker enrollment -> token server
+	handle /token* {
+		reverse_proxy token:8790
+	}
+	handle /chat* {
+		reverse_proxy token:8790
+	}
+	handle /enroll* {
+		reverse_proxy token:8790
+	}
+
+	# --- the SPA: static files with client-side-routing fallback ---
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
