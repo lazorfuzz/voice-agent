@@ -257,6 +257,21 @@ main{flex:1; overflow-y:auto; padding:22px 14px; -webkit-overflow-scrolling:touc
 .big-connect:active{transform:translateY(0) scale(.97)}
 .big-connect:disabled{opacity:.55; cursor:not-allowed}
 
+/* frequent-command pills on the home screen — one tap re-runs a common command */
+.cmdPills{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:8px;
+  max-width:min(88vw,460px); margin-top:18px;
+}
+.cmdPill{
+  padding:8px 14px; border-radius:999px; cursor:pointer;
+  font-family:var(--font-sans); font-size:13px; color:var(--muted);
+  background:var(--glass-2); border:1px solid var(--glass-brd);
+  transition:color .15s, border-color .15s, background .15s, transform .18s var(--spring);
+  max-width:88vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cmdPill:hover{color:var(--ink); border-color:var(--glass-hi); background:var(--glass-3); transform:translateY(-1px)}
+.cmdPill:active{transform:translateY(0) scale(.96)}
+
 /* messages: avatar + bubble, consecutive same-speaker rows tighten and drop the avatar */
 .row{display:flex; gap:10px; align-items:flex-end; animation:rise .3s var(--spring)}
 .row.you{flex-direction:row-reverse}

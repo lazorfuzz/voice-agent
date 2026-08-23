@@ -87,3 +87,6 @@ livekit/*.lan-backup
 livekit/.livekit.runtime.yaml
 livekit/.livekit.runtime.yaml.new
 
+# personal usage data: frequent-command pill stats (web UI home screen)
+agent/commands_freq.json
+agent/commands_freq.json.lock

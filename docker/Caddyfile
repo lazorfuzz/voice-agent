@@ -21,6 +21,9 @@
 	handle /chat* {
 		reverse_proxy token:8790
 	}
+	handle /commands* {
+		reverse_proxy token:8790
+	}
 	handle /enroll* {
 		reverse_proxy token:8790
 	}

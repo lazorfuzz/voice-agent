@@ -308,6 +308,15 @@ export default function App() {
                   {r.connecting ? 'Connecting…' : 'Connect'}
                 </button>
               )}
+              {r.cmdPills.length > 0 && (
+                <div className="cmdPills" aria-label="Frequent commands">
+                  {r.cmdPills.slice(0, 6).map((c) => (
+                    <button key={c.text} className="cmdPill" onClick={() => r.sendChatMessage(c.text)}>
+                      {c.text}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             r.messages.map((m, i) => {

@@ -14,6 +14,8 @@ const ENROLLED_URL = sameOrigin ? '/enrolled' : 'http://127.0.0.1:8790/enrolled'
 const PERSONAS_URL = sameOrigin ? '/personas' : 'http://127.0.0.1:8790/personas'
 const VOICES_URL = sameOrigin ? '/voices' : 'http://127.0.0.1:8790/voices'
 const VOICE_PREVIEW_URL = sameOrigin ? '/voice_preview' : 'http://127.0.0.1:8790/voice_preview'
+// Frequently-used chat commands (server-tracked) for the home-screen pills.
+const COMMANDS_URL = sameOrigin ? '/commands' : 'http://127.0.0.1:8790/commands'
 const _NGROK = { 'ngrok-skip-browser-warning': 'true' }
 // Ring live-view WebRTC broker (WebSocket signalling + ICE servers).
 const LIVE_ICE_URL = sameOrigin ? '/live/ice' : 'http://127.0.0.1:8791/live/ice'
@@ -39,6 +41,7 @@ export function useRoom() {
   useEffect(() => { personaRef.current = persona }, [persona])
   const [personaList, setPersonaList] = useState([])  // [{key,label,voice,personality,greeting,builtin}]
   const [voices, setVoices] = useState([])            // catalog voice names for the create form
+  const [cmdPills, setCmdPills] = useState([])        // frequent commands for the home screen
   const [previewingVoice, setPreviewingVoice] = useState('')  // voice currently being previewed
   const previewAudioRef = useRef(null)
   const [ambient, setAmbient] = useState(() =>       // always-listen, respond only when addressed; persisted
@@ -406,6 +409,13 @@ export function useRoom() {
     } catch (e) { /* ignore */ }
   }, [])
 
+  const fetchCommands = useCallback(async () => {
+    try {
+      const d = await fetch(COMMANDS_URL, { headers: _NGROK }).then((r) => r.json())
+      setCmdPills(Array.isArray(d.commands) ? d.commands : [])
+    } catch (e) { /* ignore — pills are a nice-to-have */ }
+  }, [])
+
   const savePersona = useCallback(async ({ key, label, personality, voice, greeting }) => {
     const res = await fetch(PERSONAS_URL, {
       method: 'POST', headers: { 'Content-Type': 'application/json', ..._NGROK },
@@ -511,6 +521,7 @@ export function useRoom() {
     fetchEnrolled()
     fetchPersonas()
     fetchVoices()
+    fetchCommands()
     const onDeviceChange = () => populateMics()
     navigator.mediaDevices?.addEventListener('devicechange', onDeviceChange)
     // wake locks auto-release when the tab is hidden; re-acquire when the user
@@ -523,7 +534,7 @@ export function useRoom() {
       navigator.mediaDevices?.removeEventListener('devicechange', onDeviceChange)
       document.removeEventListener('visibilitychange', onVis)
     }
-  }, [populateMics, acquireWakeLock, fetchPersonas, fetchVoices])
+  }, [populateMics, acquireWakeLock, fetchPersonas, fetchVoices, fetchCommands])
 
   return {
     connected, connecting, status, messages, mics, selectedMic, muted, analysersRef,
@@ -533,5 +544,6 @@ export function useRoom() {
     enrolled, enrolling, enrollLabel, enrollVoice, deleteSpeaker,
     liveActive, liveStatus, liveVideoRef, startLiveView, stopLiveView,
     connect, disconnect: teardown, toggleMute, changeMic, sendChatMessage,
+    cmdPills,
   }
 }

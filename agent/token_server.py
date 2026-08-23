@@ -309,6 +309,13 @@ class TokenHandler(BaseHTTPRequestHandler):
                 full = [{"key": p["key"], "label": p["label"]} for p in full]
             return self._send_response(200, {"personas": full})
 
+        if parsed.path == "/commands":
+            # frequently-used chat commands for the home-screen pills (usage data — gate remote)
+            if not self._remote_ok(parse_qs(parsed.query)):
+                return self._send_response(401, {"error": "unauthorized"})
+            import commands_freq
+            return self._send_response(200, {"commands": commands_freq.top(8)})
+
         if parsed.path == "/voices":
             return self._send_response(200, {"voices": personas.CATALOG_VOICES})
 

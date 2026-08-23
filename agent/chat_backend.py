@@ -18,6 +18,7 @@ import urllib.request
 import asyncio
 
 import agent_tools
+import commands_freq
 import tv_tools
 import nest_tools
 import roomba_tools
@@ -405,6 +406,10 @@ def run_chat(client_messages, persona=None):
             yield {"type": "error", "message": "empty message"}
             return
 
+        # frequent-commands pills: this turn's user text + whether it actually ran tools
+        turn_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        turn_tools = []
+
         for _ in range(MAX_TOOL_ITERS):
             msg = _llm(messages)
             tcs = msg.get("tool_calls")
@@ -419,11 +424,17 @@ def run_chat(client_messages, persona=None):
                         args = {}
                     yield {"type": "tool", "name": name}
                     result = run_tool(name, args)
+                    turn_tools.append(name)
                     messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": result})
                 continue
             final = (msg.get("content") or "").strip()
             if not final:
                 final = "…"
+            if turn_tools:  # tool-triggering turn completed -> count it for the pills
+                try:
+                    commands_freq.record(turn_text, turn_tools)
+                except Exception:
+                    pass
             for i, word in enumerate(final.split(" ")):
                 yield {"type": "delta", "text": (word if i == 0 else " " + word)}
                 time.sleep(0.012)   # gentle typewriter pacing

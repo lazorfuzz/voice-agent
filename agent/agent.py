@@ -43,6 +43,7 @@ import petlibro_tools
 import doordash_tools
 import light_fx
 import personas
+import commands_freq      # frequent-command pills: voice turns that ran tools feed them too
 import session_db as db   # the poller reads finished sessions to announce them
 import config             # which integrations are enabled -> which tools to expose
 
@@ -1788,6 +1789,26 @@ async def entry(ctx: agents.JobContext):
     # (phone/mic/upstream) from (b) events but STT-DROP lines in agent.log (gate too hot)
     # from (c) events and transcripts but no reply (pipeline bug). ----
     _user_speaking = {"v": False}
+
+    # ---- frequent-command pills: a voice turn that runs tools counts, same as chat. ----
+    # The final STT transcript is the command text; the first tool batch of the turn
+    # records it (a turn can chain several batches — later ones would double-count).
+    _pending_cmd = {"text": None}
+
+    @session.on("user_input_transcribed")
+    def _on_cmd_transcript(ev):
+        if getattr(ev, "is_final", False) and (ev.transcript or "").strip():
+            _pending_cmd["text"] = ev.transcript.strip()
+
+    @session.on("function_tools_executed")
+    def _on_cmd_tools(ev):
+        text, _pending_cmd["text"] = _pending_cmd["text"], None
+        names = [fc.name for fc in getattr(ev, "function_calls", [])]
+        if text and names:
+            # off the event loop — record() does file IO under a cross-process lock
+            _t = asyncio.create_task(asyncio.to_thread(commands_freq.record, text, names))
+            _BG_TASKS.add(_t)
+            _t.add_done_callback(_BG_TASKS.discard)
 
     @session.on("user_state_changed")
     def _on_user_state(ev):
