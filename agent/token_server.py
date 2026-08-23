@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import hmac
 import hashlib
@@ -309,6 +310,13 @@ class TokenHandler(BaseHTTPRequestHandler):
                 full = [{"key": p["key"], "label": p["label"]} for p in full]
             return self._send_response(200, {"personas": full})
 
+        if parsed.path == "/commands":
+            # frequently-used chat commands for the home-screen pills (usage data — gate remote)
+            if not self._remote_ok(parse_qs(parsed.query)):
+                return self._send_response(401, {"error": "unauthorized"})
+            import commands_freq
+            return self._send_response(200, {"commands": commands_freq.top(8)})
+
         if parsed.path == "/voices":
             return self._send_response(200, {"voices": personas.CATALOG_VOICES})
 
@@ -372,7 +380,19 @@ class TokenHandler(BaseHTTPRequestHandler):
         print(f"[token_server] {args[0]}")
 
 
+def _reexec_on_hup(signum, frame):
+    """Reload config by re-exec'ing IN PLACE (same PID) instead of dying for a respawn.
+    Two reasons: (1) fresh .env.local/env without a supervisor race, and (2) macOS Local
+    Network (TCC) permission is attributed to the process lineage — a pkill+respawn from the
+    launchd watchdog produces a process whose LAN unicast is silently denied (EHOSTUNREACH),
+    which breaks every local-device tool in chat (WiZ, Roomba, TV). Re-exec keeps the
+    original, permission-holding lineage alive across config reloads."""
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
 if __name__ == "__main__":
+    import signal
+    signal.signal(signal.SIGHUP, _reexec_on_hup)
     server = ThreadingHTTPServer(("0.0.0.0", 8790), TokenHandler)
     print(f"Token + chat server listening on 0.0.0.0:8790")
     print(f"  LIVEKIT_URL={LIVEKIT_URL}")

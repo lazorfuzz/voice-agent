@@ -23,6 +23,9 @@
 	handle /chat* {
 		reverse_proxy 127.0.0.1:8790
 	}
+	handle /commands* {
+		reverse_proxy 127.0.0.1:8790
+	}
 
 	# speaker enrollment (ambient voice gate) -> token server
 	handle /enroll* {
@@ -93,6 +96,9 @@
 			reverse_proxy 127.0.0.1:8790
 		}
 		handle /chat* {
+			reverse_proxy 127.0.0.1:8790
+		}
+		handle /commands* {
 			reverse_proxy 127.0.0.1:8790
 		}
 		handle /enroll* {

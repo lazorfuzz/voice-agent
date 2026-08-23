@@ -10,6 +10,11 @@ P="$(cd "$(dirname "$0")" && pwd)"; PY="$P/.venv/bin/python"; D="$P/scripts/daem
 _ev() { grep -E "^$1=" "$P/agent/.env.local" 2>/dev/null | head -1 | cut -d= -f2-; }
 NGROK_DOMAIN="${NGROK_DOMAIN:-$(_ev NGROK_DOMAIN)}"
 TURN_VPS="${TURN_VPS:-$(_ev TURN_VPS)}"
+# Optional pin for LiveKit's advertised media IP. Unset (default) => node_ip tracks the LAN IP
+# below. Set it (e.g. to a VPS public IP in the remote-via-tunnel profile) to keep node_ip
+# fixed so the LAN-IP heal never overwrites it — a mismatch between the advertised IP and the
+# actual RTC socket breaks all media.
+LIVEKIT_NODE_IP="${LIVEKIT_NODE_IP:-$(_ev LIVEKIT_NODE_IP)}"
 
 # Auto-detect the Mac's LAN IP (DHCP changes it). Only LiveKit's node_ip (WebRTC media
 # candidates) and the TURN LAN host truly need it — Caddy binds :8443 on all interfaces,
@@ -19,7 +24,7 @@ LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/nul
 LAST_IP=$(cat "$P/.lan_ip" 2>/dev/null || echo "")
 if [ "$LAN_IP" != "$LAST_IP" ]; then
   echo "[ip] LAN IP ${LAST_IP:-unknown} -> $LAN_IP; updating configs + restarting media services"
-  [ -f "$P/livekit/livekit.yaml" ] && sed -i '' "s/node_ip: .*/node_ip: $LAN_IP/" "$P/livekit/livekit.yaml"
+  [ -f "$P/livekit/livekit.yaml" ] && sed -i '' "s/node_ip: .*/node_ip: ${LIVEKIT_NODE_IP:-$LAN_IP}/" "$P/livekit/livekit.yaml"
   # Caddy site address (its cert SAN must include the current IP — browsers send no SNI
   # for a bare IP, so it must be named, not a :8443 wildcard).
   [ -f "$P/Caddyfile" ] && sed -i '' -E "s/^[0-9.]+:8443 \{/$LAN_IP:8443 {/" "$P/Caddyfile"
@@ -29,7 +34,13 @@ if [ "$LAN_IP" != "$LAST_IP" ]; then
       -e "s/TURN_LAN_HOST=.*/TURN_LAN_HOST=$LAN_IP/" "$f"
   done
   container rm -f livekit >/dev/null 2>&1 || true   # recreate with the new node_ip below
-  pkill -f "token_server.py" 2>/dev/null || true    # reload LIVEKIT_PUBLIC_URL/TURN env
+  # Reload env via SIGHUP (token_server re-execs IN PLACE, same PID) rather than pkill+respawn:
+  # a respawn from the launchd watchdog loses macOS Local Network permission (TCC attributes it
+  # to the process lineage), after which LAN unicast is silently denied (EHOSTUNREACH) and every
+  # local-device tool in chat breaks (WiZ/Roomba/TV). Older builds without the handler just die
+  # on HUP and step 4 respawns them (previous behavior).
+  pkill -HUP -f "token_server.py" 2>/dev/null || true
+  sleep 1
   pkill -f "caddy run" 2>/dev/null || true          # reload the site cert for the new IP
   sleep 2                                            # let caddy fully exit before step 5 restarts it
   echo "$LAN_IP" > "$P/.lan_ip"

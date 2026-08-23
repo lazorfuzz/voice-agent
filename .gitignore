@@ -11,9 +11,10 @@ agent/.env.robinhood
 coturn/.turnpass
 coturn/turnserver.conf
 
-# deployment-specific configs (contain LAN IP / dev key / paths — copy from *.example)
+# deployment-specific configs (contain LAN IP / dev key / paths — copy from *.example).
+# /Caddyfile is anchored to the repo root: docker/Caddyfile is a committed, generic config.
 livekit/livekit.yaml
-Caddyfile
+/Caddyfile
 
 # certs / keys / device pairing material
 *.pem
@@ -85,3 +86,7 @@ livekit/*.lan-backup
 # generated at runtime by run_all.sh (bind-address healing)
 livekit/.livekit.runtime.yaml
 livekit/.livekit.runtime.yaml.new
+
+# personal usage data: frequent-command pill stats (web UI home screen)
+agent/commands_freq.json
+agent/commands_freq.json.lock
