@@ -42,6 +42,13 @@ OPENAI_BASE_URL=http://host.docker.internal:11434/v1
 LLM_MODEL=qwen3:8b
 ```
 
+**Binding gotcha:** `host.docker.internal` traffic arrives via the docker bridge, NOT
+loopback — a host LLM listening only on `127.0.0.1` gives "connection refused". Ollama's
+default binding is loopback, so set `OLLAMA_HOST=0.0.0.0` (systemd:
+`systemctl edit ollama` → `Environment="OLLAMA_HOST=0.0.0.0"`), or bind it to the docker
+bridge only: `OLLAMA_HOST=172.17.0.1`. If the host has a public IP, prefer the bridge
+binding or a firewall rule so the LLM isn't exposed to the internet.
+
 A cloud or another-host endpoint just uses its real URL.
 
 ## What runs where

@@ -43,12 +43,14 @@ services:
     restart: unless-stopped
 
   # The LiveKit agent worker: VAD + STT (faster-whisper) + TTS (pocket-tts) + tools.
+  # No `command:` here — the Dockerfile CMD runs `download-files` before the worker (the
+  # turn-detector needs its model pre-downloaded or its runner fails), and a compose
+  # command override would silently skip that step.
   agent:
     build:
       context: .
       dockerfile: docker/Dockerfile.agent
     image: kronik-agent
-    command: python agent.py dev
     env_file: [.env]
     environment:
       LIVEKIT_URL: ws://livekit:7880

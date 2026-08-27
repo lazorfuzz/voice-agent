@@ -37,4 +37,5 @@ ENV PYTHONUNBUFFERED=1 \
     FASTER_WHISPER_MODEL=large-v3
 
 WORKDIR /app/agent
-CMD ["python3", "agent.py", "dev"]
+# download-files first — see Dockerfile.agent for why (turn-detector ONNX model).
+CMD ["sh", "-c", "python3 agent.py download-files && exec python3 agent.py dev"]
