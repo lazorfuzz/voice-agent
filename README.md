@@ -244,6 +244,7 @@ fix for each. On Docker, check `docker compose logs -f agent`. Common cases:
 | Symptom | Fix |
 |---|---|
 | "no LLM" warning | native: `bash setup.sh` (installs Ollama); Docker: set `OPENAI_BASE_URL` in `.env` (use `host.docker.internal`, not `127.0.0.1`) |
+| chat says "connection refused" (Docker) | the host LLM only listens on loopback — for ollama set `OLLAMA_HOST=0.0.0.0` (see docker/README.md) |
 | microphone connects, no replies | check the agent log — usually the LLM endpoint or model id |
 | LAN page does not load | native: trust the cert at `https://<LAN-IP>:8443/ca.crt`; Docker: mic needs HTTPS off `localhost` (see docker/README.md) |
 | remote voice connects but stays silent | TURN is not reachable — see Remote access |

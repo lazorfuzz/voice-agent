@@ -36,4 +36,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app/agent
 # Default command: the LiveKit agent worker. The token service overrides this in compose.
-CMD ["python", "agent.py", "dev"]
+# download-files first: the turn-detector plugin needs its ONNX model PRE-downloaded (its
+# inference runner won't fetch at runtime and the worker crash-loops without it). Idempotent —
+# it lands in the /models volume, so it's a ~1s no-op on every boot after the first.
+CMD ["sh", "-c", "python agent.py download-files && exec python agent.py dev"]
