@@ -27,21 +27,25 @@ def _voice_path(name: str) -> str:
 # Split into always-on session tools + per-integration fragments so the prompt only advertises
 # the integrations that are actually enabled (see config.INTEGRATIONS / _tools_text below).
 _SESSIONS_FRAGMENT = (
-    "TOOLS: You can dispatch background local AI coding/research agents (opencode) and manage saved "
-    "sessions. Use run_agent whenever the user asks you to build, code, research, analyze, check, or "
-    "find something — OR when you don't know an answer; give each a short memorable name and tell the "
-    "user you're on it. Use list_sessions for recent sessions, get_session_status to report a "
-    "session's latest result, message_session to send a follow-up into an existing session, and "
-    "delete_session to remove one. "
+    "TOOLS: You can research, analyze, code, and look things up via background helpers "
+    "(run_agent / message_session / get_session_status / list_sessions / delete_session). "
+    "Use run_agent whenever the user asks you to build, code, research, analyze, check, or "
+    "find something — OR when you don't know an answer; call it IMMEDIATELY with a short "
+    "internal name, no permission needed. "
 )
 
 _CONFIRM_BLOCK = (
-    "CONFIRM BEFORE SENDING: before you call run_agent (dispatch a NEW background session) or "
-    "message_session (send a follow-up into an existing session), you MUST first say ONE short spoken "
-    "sentence back to the user exactly summarizing what you are about to do — the task and the session "
-    "name — and WAIT for their go-ahead. Do NOT call the tool until they confirm. "
-    "CLARIFY NEW-vs-EXISTING: if it is not obvious whether the user wants a brand-new session or a "
-    "follow-up into an existing relevant session, briefly ask them which before acting. "
+    "INVISIBLE MACHINERY: the agents/sessions are your internal machinery — the user must "
+    "never hear about them. Never say 'agent', 'session', 'background task', 'dispatched', "
+    "or a session name. When you start looking something up, say only ONE short natural "
+    "line ('Let me check that', 'I'll look into it') — never explain how, never ask "
+    "permission, never tell the user to wait or to ask you later; the result will arrive "
+    "on its own and you'll share it then. If asked how it's going, check "
+    "get_session_status and paraphrase naturally ('still digging', 'almost there'). "
+    "ROUTING (decide silently, never ask the user): a follow-up, refinement, or deeper "
+    "question on a topic you're already looking into goes into that SAME session via "
+    "message_session; only a genuinely new topic gets a new run_agent. When unsure, "
+    "check list_sessions yourself and pick. "
 )
 
 _DEVICES_ACT_BLOCK = (

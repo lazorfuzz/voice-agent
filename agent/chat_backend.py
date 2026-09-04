@@ -61,16 +61,19 @@ def _tool(name, desc, props, required):
 # The full catalog; _llm() sends only the tools whose integration is enabled (config-gated).
 _ALL_TOOLS = [
     _tool("run_agent",
-          "Dispatch a background local AI agent (opencode) to do a coding, research, or analysis "
-          "task, or to figure out something you don't know. Runs async, saved under `name`.",
-          {"task": {"type": "string", "description": "what the agent should do, in plain language."},
+          "Start a NEW background session for a coding/research/analysis task on a NEW topic, or "
+          "to figure out something you don't know. Runs async, saved under `name`. For follow-ups "
+          "on a topic an existing session covers, use message_session instead (keeps context).",
+          {"task": {"type": "string", "description": "what the session should do, in plain language."},
            "name": {"type": "string", "description": "a short memorable name for the session."}},
           ["task", "name"]),
     _tool("list_sessions", "List recent saved agent sessions with status and how long ago each was active.",
           {}, []),
     _tool("get_session_status", "Get the latest state/result of a saved agent session by name.",
           {"name": {"type": "string"}}, ["name"]),
-    _tool("message_session", "Send a new instruction into an existing saved agent session.",
+    _tool("message_session",
+          "Continue an EXISTING saved session with a follow-up or refinement — preferred over "
+          "run_agent whenever the topic is already covered by a session (keeps its context).",
           {"name": {"type": "string"}, "message": {"type": "string"}}, ["name", "message"]),
     _tool("delete_session", "Delete a saved agent session by name.",
           {"name": {"type": "string"}}, ["name"]),
@@ -377,10 +380,12 @@ def run_tool(name: str, args: dict) -> str:
         return f"That tool failed ({type(e).__name__})."
 
 
-def _llm(messages):
-    tools = [t for t in _ALL_TOOLS if t["function"]["name"] in config.enabled_tool_names()]
-    body = {"model": LLM_MODEL, "messages": messages, "tools": tools, "temperature": 0.7,
+def _llm(messages, with_tools=True):
+    body = {"model": LLM_MODEL, "messages": messages, "temperature": 0.7,
             "chat_template_kwargs": {"enable_thinking": False}}
+    if with_tools:
+        body["tools"] = [t for t in _ALL_TOOLS
+                         if t["function"]["name"] in config.enabled_tool_names()]
     if os.environ.get("LLM_REASONING_EFFORT"):   # thinking models (qwen3.5 on Ollama)
         body["reasoning_effort"] = os.environ["LLM_REASONING_EFFORT"]
     req = urllib.request.Request(
@@ -410,11 +415,30 @@ def run_chat(client_messages, persona=None):
         turn_text = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         turn_tools = []
 
+        # Loop guard: some models (0GM among them) re-issue an identical tool call after a
+        # successful result whose text sounds "in progress" (async dispatches like run_agent),
+        # burning every iteration and never answering. Track executed calls; when a whole
+        # batch is repeats, don't re-execute — drop the tools from the next request so the
+        # model must produce its final text (it naturally summarizes the earlier result).
+        executed: dict = {}
+        force_text = False
+
         for _ in range(MAX_TOOL_ITERS):
-            msg = _llm(messages)
+            msg = _llm(messages, with_tools=not force_text)
             tcs = msg.get("tool_calls")
+            if tcs and force_text:
+                # Tools were withheld and it STILL emitted a call: the model is stuck in a
+                # call loop. Answer with the executed result — that's the message meant for
+                # the user ("Bet — I put an agent on ...").
+                final = next(iter(executed.values()), "") or "Done."
+                for i, word in enumerate(final.split(" ")):
+                    yield {"type": "delta", "text": (word if i == 0 else " " + word)}
+                    time.sleep(0.012)
+                yield {"type": "done"}
+                return
             if tcs:
                 messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tcs})
+                all_repeats = True
                 for tc in tcs:
                     fn = tc.get("function", {})
                     name = fn.get("name") or ""
@@ -422,10 +446,17 @@ def run_chat(client_messages, persona=None):
                         args = json.loads(fn.get("arguments") or "{}")
                     except Exception:
                         args = {}
-                    yield {"type": "tool", "name": name}
-                    result = run_tool(name, args)
-                    turn_tools.append(name)
+                    key = (name, json.dumps(args, sort_keys=True))
+                    if key in executed:
+                        result = executed[key]      # idempotent echo, no re-execution
+                    else:
+                        yield {"type": "tool", "name": name}
+                        result = run_tool(name, args)
+                        turn_tools.append(name)
+                        executed[key] = result
+                        all_repeats = False
                     messages.append({"role": "tool", "tool_call_id": tc.get("id"), "content": result})
+                force_text = all_repeats
                 continue
             final = (msg.get("content") or "").strip()
             if not final:

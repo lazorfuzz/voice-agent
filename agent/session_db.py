@@ -94,12 +94,16 @@ def get(name):
         return dict(r) if r else None
 
 
-def mark_announced(name):
-    """Mark a session's completion as already announced (so we don't re-announce it)."""
+def mark_announced(name, completed_at=None):
+    """Mark a session COMPLETION as announced. Sessions are multi-turn (message_session), so
+    announcements are per-completion, not per-session: record the updated_at of the completion
+    we actually announced — a LATER turn's completion bumps updated_at past this and gets its
+    own announcement. (Recording the announced completion's own timestamp, not now(), closes
+    the race where a new turn finishes while we're speaking the previous announcement.)"""
     with _conn() as c:
         c.execute(
             "UPDATE sessions SET announced_at=? WHERE name=? COLLATE NOCASE",
-            (time.time(), name),
+            (completed_at if completed_at is not None else time.time(), name),
         )
 
 

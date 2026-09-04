@@ -103,12 +103,18 @@ def _lead(ctx, text, *, delay=_LEAD_DELAY, interval=None, max_steps=None):
 
 
 def _voice_llm():
-    """The VOICE pipeline's LLM endpoint. VOICE_LLM_MODEL / VOICE_LLM_URL (agent/.env.local)
-    override the shared LLM_MODEL / OPENAI_BASE_URL so voice can run a different model (e.g.
-    a dedicated gemma server) while chat/opencode stay on the prod 0GM at :8081."""
+    """The VOICE pipeline's LLM endpoint. VOICE_LLM_MODEL / VOICE_LLM_URL / VOICE_LLM_KEY
+    (agent/.env.local) override the shared LLM_MODEL / OPENAI_BASE_URL / OPENAI_API_KEY so
+    voice can run a different model — a dedicated local server or a cloud API (e.g.
+    Cerebras) — while chat/opencode stay on the prod 0GM."""
     model = os.environ.get("VOICE_LLM_MODEL") or os.environ["LLM_MODEL"]
     url = (os.environ.get("VOICE_LLM_URL") or os.environ["OPENAI_BASE_URL"]).rstrip("/")
-    return model, url
+    key = os.environ.get("VOICE_LLM_KEY") or os.environ["OPENAI_API_KEY"]
+    return model, url, key
+
+
+def _voice_llm_is_local():
+    return any(h in _voice_llm()[1] for h in ("127.0.0.1", "localhost"))
 
 
 class _FarFieldGain:
@@ -211,11 +217,13 @@ def _gpu_warm_blocking():
         "messages": [{"role": "user", "content": "ok"}],
         "chat_template_kwargs": {"enable_thinking": False},
     }
+    if not _voice_llm_is_local():
+        return   # warms the LOCAL Metal GPU; against a cloud LLM it's just token burn
     req = urllib.request.Request(
         _voice_llm()[1] + "/chat/completions",
         data=_json.dumps(body).encode(),
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"})
+                 "Authorization": f"Bearer {_voice_llm()[2]}"})
     try:
         urllib.request.urlopen(req, timeout=5).read()
     except Exception:
@@ -885,12 +893,17 @@ class Assistant(Agent):
 
     @function_tool
     async def run_agent(self, ctx: RunContext, task: str, name: str) -> str:
-        """Dispatch a background local AI agent (opencode) to do a coding, research, or analysis
-        task, or to figure out something you don't know the answer to. Runs asynchronously and is
-        saved under `name` so it can be resumed later.
+        """Start a NEW background session for a coding, research, or analysis task on a NEW
+        topic, or to figure out something you don't know the answer to. Runs asynchronously
+        and is saved under `name` so it can be resumed later.
+
+        Do NOT use this for a follow-up, refinement, or deeper question on a topic an
+        existing session already covers — send that into the same session with
+        message_session instead (the session keeps its context, so follow-ups there are
+        faster and smarter).
 
         Args:
-            task: what the agent should do, in plain language.
+            task: what the session should do, in plain language.
             name: a short memorable name to save the session under (e.g. "bug hunt").
         """
         # offload the DB write + detached spawn to a thread: returns immediately,
@@ -931,8 +944,9 @@ class Assistant(Agent):
 
     @function_tool
     async def message_session(self, ctx: RunContext, name: str, message: str) -> str:
-        """Send a new instruction into an existing saved agent session to continue its work.
-        Use when the user wants to follow up on or add to an existing session.
+        """Continue an EXISTING saved session with a follow-up or refinement — the preferred
+        tool whenever the user digs deeper into a topic a session already covers (it keeps
+        all prior context). Only start a new run_agent for a genuinely new topic.
 
         Args:
             name: the saved session name to continue.
@@ -1685,19 +1699,24 @@ async def entry(ctx: agents.JobContext):
         llm=openai.LLM(
             model=_voice_llm()[0],
             base_url=_voice_llm()[1],
-            api_key=os.environ["OPENAI_API_KEY"],
-            # Hybrid-thinking models (e.g. qwen3.5 on Ollama) MUST have reasoning disabled
-            # for voice — thinking adds 10-30s before the first spoken token. Env-gated
-            # because some OpenAI-compatible servers reject the field outright.
-            reasoning_effort=os.environ.get("LLM_REASONING_EFFORT") or None,
+            api_key=_voice_llm()[2],
+            # Hybrid-thinking models MUST have reasoning disabled for voice — thinking adds
+            # seconds before the first spoken token. VOICE_LLM_REASONING_EFFORT scopes it to
+            # the voice pipeline (e.g. 'none' for Cerebras); falls back to the shared
+            # LLM_REASONING_EFFORT. Env-gated because some servers reject the field outright.
+            reasoning_effort=(os.environ.get("VOICE_LLM_REASONING_EFFORT")
+                              or os.environ.get("LLM_REASONING_EFFORT") or None),
             # 0.4, not 0.7: on the 4-bit MoE the tool-vs-narrate decision is knife-edge, and
             # 0.7 sampling flips it ~1/3 of the time so device commands get NARRATED instead of
             # executed (measured 66% tool-call rate at 0.7 vs 100% at <=0.4). 0.4 keeps some
             # conversational variety while staying below that reliability cliff.
             temperature=0.4,
-            # disable Qwen3.6 reasoning for low voice latency (voice-only;
-            # the shared LLM server keeps thinking on for other clients)
-            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            # disable Qwen3.6 reasoning for low voice latency (voice-only; the shared LLM
+            # server keeps thinking on for other clients). VOICE_LLM_TEMPLATE_KWARGS=0 drops
+            # the field entirely — Cerebras (and other strict clouds) hard-reject it, and it
+            # POISONS Nemotron-family templates (see phonellm eval).
+            extra_body=({"chat_template_kwargs": {"enable_thinking": False}}
+                        if os.environ.get("VOICE_LLM_TEMPLATE_KWARGS", "1") != "0" else None),
             # Emit legacy (anyOf) tool schemas, NOT strict ones. Strict serializes an
             # optional param `x: T | None` as {"type": ["T","null"]} — a type LIST that
             # mlx_lm's qwen3_coder tool parser doesn't recognize, so it falls back to
@@ -1945,10 +1964,14 @@ async def entry(ctx: agents.JobContext):
                 for r in rows:
                     if r["status"] not in ("done", "error"):
                         continue
-                    if r.get("announced_at"):
+                    updated = r.get("updated_at") or 0
+                    # Sessions are multi-turn: each turn's completion bumps updated_at, and
+                    # each deserves its own announcement. Skip only completions we've already
+                    # announced (announced_at >= that completion's updated_at) — a one-shot
+                    # "announced" flag here silently swallowed follow-up answers.
+                    if (r.get("announced_at") or 0) >= updated:
                         continue
                     # Only announce completions that happened AFTER this call started
-                    updated = r.get("updated_at") or 0
                     if updated < call_start:
                         continue
                     # Distill a SHORT spoken summary via the LLM from the END of the output (the
@@ -1958,21 +1981,27 @@ async def entry(ctx: agents.JobContext):
                     # context, so a follow-up ("what did it find?") has sensible memory.
                     out = (r.get("last_output") or "").strip()
                     tail = out[-3000:] if len(out) > 3000 else out   # focus on the result; keep prompt small
-                    status_label = "finished" if r["status"] == "done" else "hit an error"
-                    try:
-                        await session.generate_reply(
-                            instructions=(
-                                f"A background task you dispatched earlier, named '{r['name']}', just "
-                                f"{status_label}. In ONE short spoken sentence, tell the user it's done "
-                                f"and the key result. Summarize from this output — do NOT read it "
-                                f"verbatim:\n\n{tail}"
-                            ),
-                            tool_choice="none",
+                    if r["status"] == "done":
+                        instr = (
+                            f"You were looking into '{r['name']}' for the user and you now have the "
+                            f"answer. Share the key finding naturally in ONE short spoken sentence, as "
+                            f"if you just finished checking it yourself — do NOT mention agents, "
+                            f"sessions, background tasks, or that anything 'finished'. Summarize from "
+                            f"this — never read it verbatim:\n\n{tail}"
                         )
+                    else:
+                        instr = (
+                            f"You were looking into '{r['name']}' for the user but the lookup failed — "
+                            f"you do NOT have an answer. In ONE short spoken sentence, tell them you "
+                            f"couldn't get it and offer to try again. Do NOT claim it's done, and do "
+                            f"NOT mention agents, sessions, or background tasks."
+                        )
+                    try:
+                        await session.generate_reply(instructions=instr, tool_choice="none")
                     except Exception:
                         pass
-                    # Mark as announced so we never re-announce
-                    db.mark_announced(r["name"])
+                    # Mark THIS completion as announced (later turns re-announce on their own)
+                    db.mark_announced(r["name"], completed_at=updated)
             except Exception:
                 pass  # polling must never take down the voice loop
 
