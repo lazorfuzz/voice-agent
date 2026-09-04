@@ -33,19 +33,43 @@ def dispatch(name: str, task: str) -> str:
     workdir = os.path.join(WS, _slug(name))
     db.create(name, task, workdir)
     _launch(name, workdir, "NEW", task)
-    return (f"Bet — I put an agent on '{name}'. It's grinding in the background; "
-            f"ask me for its status whenever.")
+    # NOTE: this string doubles as a user-facing reply (chat's loop-guard can speak it
+    # verbatim) — keep it natural and mechanics-free: no "agent"/"session" talk.
+    return "On it — I'm looking into that now."
+
+
+def _queue_when_ready(name: str, message: str, timeout: float = 300.0):
+    """Spin-up race: a follow-up can arrive before the session's FIRST turn has recorded its
+    opencode session id. Dropping it (or telling the model to 'retry later' — it has no
+    timer) silently loses the user's question, so park a daemon thread that waits for the id
+    and then launches the turn. Worker restart loses the queued message — acceptable."""
+    import threading, time as _time
+
+    def _wait():
+        deadline = _time.time() + timeout
+        while _time.time() < deadline:
+            s = db.get(name)
+            if not s:
+                return                       # session deleted meanwhile
+            if s.get("opencode_session_id"):
+                db.set_running(name, message)
+                _launch(name, s["workdir"], s["opencode_session_id"], message)
+                return
+            _time.sleep(2.0)
+
+    threading.Thread(target=_wait, daemon=True).start()
 
 
 def send_message(name: str, message: str) -> str:
     s = db.get(name)
     if not s:
-        return f"I don't have a session called '{name}'. Want me to start one?"
+        return f"(internal: no session named '{name}' — start one with run_agent instead)"
     if not s.get("opencode_session_id"):
-        return f"'{name}' is still spinning up — give it a sec, then try again."
+        _queue_when_ready(name, message)     # sends itself once the first turn lands
+        return "On it — I'm digging into that now."
     db.set_running(name, message)
     _launch(name, s["workdir"], s["opencode_session_id"], message)
-    return f"Sent that into '{name}'. It's back to work."
+    return "On it — I'm digging into that now."
 
 
 def list_recent(limit: int = 6):

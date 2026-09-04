@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 
 from livekit.agents import tts, utils
 import numpy as np
@@ -10,6 +11,48 @@ logging.getLogger("pocket_tts").setLevel(logging.WARNING)
 
 SAMPLE_RATE = 24000
 NUM_CHANNELS = 1
+
+# ---------------------------------------------------------------------------
+# Spoken-text normalization. pocket-tts (110M) does no text normalization: "."
+# and "," inside numbers read as pauses, so "1.5M" came out "one, five, m" and
+# "$1.85" as "one, eighty five". Expand money / magnitude suffixes / decimals /
+# percents into speakable words BEFORE synthesis. Applied in synthesize(), which
+# receives whole sentences (the framework assembles them first), so patterns
+# never split across streaming chunk boundaries.
+# ---------------------------------------------------------------------------
+_MAG = {"k": "thousand", "K": "thousand", "M": "million", "B": "billion", "T": "trillion"}
+
+
+def _spoken_decimal(m):
+    whole, frac = m.group(1), m.group(2)
+    return f"{whole} point {' '.join(frac)}"      # 3.14 -> "3 point 1 4"
+
+
+def _dollars(n: str) -> str:
+    return f"{n} dollar" if n == "1" else f"{n} dollars"
+
+
+def normalize_spoken(text: str) -> str:
+    t = text
+    # 1,200 -> 1200 (thousands separators pause mid-number otherwise)
+    t = re.sub(r"(?<=\d),(?=\d{3}\b)", "", t)
+    # $1.5M / $2B -> "1.5 million dollars" (decimal expanded below)
+    t = re.sub(r"\$(\d+(?:\.\d+)?)\s?([kKMBT])\b",
+               lambda m: f"{m.group(1)} {_MAG[m.group(2)]} dollars", t)
+    # 1.5M / 300k -> "1.5 million" / "300 thousand"
+    t = re.sub(r"\b(\d+(?:\.\d+)?)\s?([kKMBT])\b(?!\w)",
+               lambda m: f"{m.group(1)} {_MAG[m.group(2)]}", t)
+    # $1.85 -> "1 dollar and 85 cents"; $0.50 -> "50 cents"
+    t = re.sub(r"\$(\d+)\.(\d{2})\b",
+               lambda m: (f"{int(m.group(2))} cents" if m.group(1) == "0"
+                          else f"{_dollars(m.group(1))} and {int(m.group(2))} cents"), t)
+    # $5 -> "5 dollars"
+    t = re.sub(r"\$(\d+)\b", lambda m: _dollars(m.group(1)), t)
+    # bare decimals: 1.5 -> "1 point 5" (skip versions like 1.17.14)
+    t = re.sub(r"(?<![.\d])\b(\d+)\.(\d+)\b(?!\.\d)", _spoken_decimal, t)
+    # 12 percent, not "twelve <pause>"
+    t = re.sub(r"(?<=\d)\s?%", " percent", t)
+    return t
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +96,7 @@ class PocketTTS(tts.TTS):
             break
 
     def synthesize(self, text, *, conn_options=None) -> "PocketStream":
-        return PocketStream(tts=self, input_text=text, conn_options=conn_options)
+        return PocketStream(tts=self, input_text=normalize_spoken(text), conn_options=conn_options)
 
 
 class PocketStream(tts.ChunkedStream):
@@ -107,7 +150,7 @@ class KokoroTTS(tts.TTS):
         self._voice = "af_heart"
 
     def synthesize(self, text, *, conn_options=None) -> "ChunkedStream":
-        return ChunkedStream(tts=self, input_text=text, conn_options=conn_options)
+        return ChunkedStream(tts=self, input_text=normalize_spoken(text), conn_options=conn_options)
 
 
 class ChunkedStream(tts.ChunkedStream):
