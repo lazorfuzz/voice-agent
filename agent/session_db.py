@@ -52,10 +52,19 @@ def init():
 
 
 def create(name, task, workdir):
-    """Register a new (or reset an existing) session, marked running."""
+    """Register a new (or reset an existing) session, marked running. Returns the CANONICAL
+    name: every other query matches COLLATE NOCASE, but the UNIQUE(name) constraint behind
+    ON CONFLICT is case-sensitive — so 'Fremont Weather' and 'fremont weather' could coexist
+    as two rows that every NOCASE update then wrote in tandem (the completion poller
+    announced both -> the same result spoken twice). Reuse the existing row's exact casing
+    so the upsert always lands on it."""
     init()
     now = time.time()
     with _conn() as c:
+        r = c.execute("SELECT name FROM sessions WHERE name=? COLLATE NOCASE",
+                      (name,)).fetchone()
+        if r:
+            name = r["name"]
         c.execute(
             """INSERT INTO sessions(name,opencode_session_id,workdir,task,status,last_message,last_output,created_at,updated_at,announced_at)
                VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -65,6 +74,7 @@ def create(name, task, workdir):
                   announced_at=NULL""",
             (name, None, workdir, task, "running", task, "", now, now, None),
         )
+    return name
 
 
 def set_running(name, message):
