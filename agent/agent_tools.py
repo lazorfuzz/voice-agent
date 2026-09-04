@@ -31,7 +31,7 @@ def _launch(name, workdir, sid_arg, message):
 
 def dispatch(name: str, task: str) -> str:
     workdir = os.path.join(WS, _slug(name))
-    db.create(name, task, workdir)
+    name = db.create(name, task, workdir)   # canonical casing if the session already exists
     _launch(name, workdir, "NEW", task)
     # NOTE: this string doubles as a user-facing reply (chat's loop-guard can speak it
     # verbatim) — keep it natural and mechanics-free: no "agent"/"session" talk.

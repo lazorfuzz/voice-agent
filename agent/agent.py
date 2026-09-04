@@ -1961,9 +1961,13 @@ async def entry(ctx: agents.JobContext):
             await asyncio.sleep(poll_interval)
             try:
                 rows = db.list_recent(limit=20)
+                seen_names = set()   # legacy case-duplicate rows must not announce twice
                 for r in rows:
                     if r["status"] not in ("done", "error"):
                         continue
+                    if r["name"].lower() in seen_names:
+                        continue
+                    seen_names.add(r["name"].lower())
                     updated = r.get("updated_at") or 0
                     # Sessions are multi-turn: each turn's completion bumps updated_at, and
                     # each deserves its own announcement. Skip only completions we've already
